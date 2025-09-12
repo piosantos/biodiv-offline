@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Biodiversity Survey Coach — Offline (Safe)</title>
+
+  <!-- Local libs (download once with get_libs.sh). App still works without them. -->
+  <script src="libs/tf.min.js" defer></script>
+  <script src="libs/mobilenet.min.js" defer></script>
+  <script src="libs/chart.umd.min.js" defer></script>
+  <script src="libs/html2canvas.min.js" defer></script>
+  <script src="libs/jspdf.umd.min.js" defer></script>
+
+  <!-- PWA polish -->
+  <meta name="theme-color" content="#667eea" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+
+  <style>
+    :root { --primary-start:#667eea; --primary-end:#764ba2; --primary-text:#667eea; }
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;
+         background:linear-gradient(135deg,var(--primary-start),var(--primary-end));min-height:100vh;padding:10px;}
+    .container{max-width:800px;margin:0 auto;background:#fff;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,.2);overflow:hidden;}
+    .header{background:linear-gradient(135deg,var(--primary-start),var(--primary-end));color:#fff;padding:20px;text-align:center;}
+    .header h1{font-size:1.5em;margin-bottom:8px;}
+    .header p{font-size:.9em;opacity:.95;}
+    .status{margin-top:8px;font-size:.85em}
+    .status.good{color:#dcffe4}
+    .status.bad{color:#fff;background:rgba(220,38,38,.35);display:inline-block;padding:4px 8px;border-radius:8px}
+    .nav-tabs{display:flex;background:#f0f0f0;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+    .nav-tab{flex:1;min-width:80px;padding:12px 10px;text-align:center;cursor:pointer;font-size:.85em;font-weight:600;color:#555;background:#f0f0f0;border:none;transition:all .2s;}
+    .nav-tab.active{background:#fff;color:var(--primary-text);border-bottom:3px solid var(--primary-text);}
+    .content{padding:20px;}
+    .tab-content{display:none;}
+    .tab-content.active{display:block;}
+    h2{font-size:1.3em;margin-bottom:15px;color:#333;}
+    .info-text{color:#666;margin-bottom:20px;font-size:.95em;line-height:1.5;}
+    .survey-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:15px;margin:20px 0;}
+    .organism-card{border:2px dashed #ccc;border-radius:10px;text-align:center;background:#fafafa;cursor:pointer;position:relative;aspect-ratio:1/1;display:flex;flex-direction:column;justify-content:center;}
+    .organism-card.filled{border:2px solid #4caf50;background:#fff;}
+    .organism-card img{width:100%;height:100%;object-fit:cover;border-radius:8px;}
+    .add-icon{font-size:2em;color:#999;}
+    .add-text{font-size:.85em;color:#666;}
+    .card-overlay{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);color:#fff;padding:6px;border-radius:0 0 8px 8px;font-size:.8em;text-align:center;}
+    .count-badge{position:absolute;top:6px;left:6px;background:rgba(255,255,255,.9);border-radius:12px;padding:2px 6px;font-size:.8em;display:flex;align-items:center;gap:4px;}
+    .count-badge input{width:48px;border:1px solid #cbd5e1;border-radius:6px;padding:2px 6px;}
+    .delete-btn{position:absolute;top:5px;right:5px;background:rgba(239,68,68,.9);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border:none;font-weight:bold;cursor:pointer;opacity:0;transition:opacity .2s;}
+    .organism-card.filled:hover .delete-btn{opacity:1;}
+    .btn{background:linear-gradient(135deg,var(--primary-start),var(--primary-end));color:#fff;border:none;padding:12px 25px;border-radius:25px;font-size:.95em;font-weight:600;cursor:pointer;margin:8px 4px;display:inline-block;transition:transform .1s;}
+    .btn:disabled{background:#ccc;cursor:not-allowed;}
+    .btn:active:not(:disabled){transform:scale(.98);}
+    .btn-secondary{background:#6c757d;}
+    .center-buttons{text-align:center;margin:20px 0;}
+    .metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+    .metric-card{background:#f8f9fa;padding:15px;border-radius:10px;text-align:center;}
+    .metric-value{font-size:2em;color:var(--primary-text);font-weight:bold;}
+    .metric-label{color:#666;font-size:.85em;margin-top:5px;}
+    .report-section{background:#f8f9fa;padding:15px;border-radius:10px;margin:15px 0;}
+    .report-section h3{color:var(--primary-text);margin-bottom:10px;font-size:1.1em;}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+    .modal.visible{opacity:1;pointer-events:auto;}
+    .modal-content{background:#fff;border-radius:15px;padding:20px;width:90%;max-width:400px;}
+    #chat{border:1px solid #ccc;height:220px;overflow-y:auto;padding:10px;margin:10px 0;background:#f9f9f9;}
+    #userInput{width:70%;padding:8px;border:1px solid #ccc;border-radius:5px;}
+    .quiz-item{background:#e3f2fd;padding:10px;margin:5px 0;border-radius:5px;}
+    .hidden{display:none}
+    .text-center{text-align:center}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🌿 AI Biodiversity Survey Coach</h1>
+      <p id="headerStatus">Pembelajaran Interaktif Keanekaragaman Hayati (Offline Pack)</p>
+      <div id="status" class="status">Memeriksa libraries…</div>
+    </div>
+
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-tab="collect">📸 Kumpulkan</button>
+      <button class="nav-tab" data-tab="analyze">📊 Analisis</button>
+      <button class="nav-tab" data-tab="coach">💬 Coach</button>
+      <button class="nav-tab" data-tab="report">📝 Laporan</button>
+    </div>
+
+    <div class="content">
+      <!-- Collect -->
+      <div id="collect" class="tab-content active">
+        <h2>Kumpulkan Data Organisme</h2>
+        <p class="info-text">Ambil foto atau unggah gambar organisme (8–12 foto). Jika AI belum siap, Anda tetap bisa memberi label manual.</p>
+        <div class="survey-grid" id="surveyGrid"></div>
+        <div class="center-buttons">
+          <button class="btn" id="addBtn">➕ Tambah Slot Foto</button>
+          <button class="btn btn-secondary" id="sampleBtn">📁 Muat Data Contoh</button>
+          <button class="btn btn-secondary" id="preQuizBtn">📝 Pre-Quiz (Pilot)</button>
+        </div>
+        <p class="info-text">Troubleshooting: jalankan <code>./get_libs.sh</code> lalu reload jika fitur AI/PDF/Chart belum aktif.</p>
+      </div>
+
+      <!-- Analyze -->
+      <div id="analyze" class="tab-content">
+        <h2>Analisis Keanekaragaman</h2>
+        <div class="metric-grid">
+          <div class="metric-card"><div class="metric-value" id="totalSpecies">0</div><div class="metric-label">Total Spesies</div></div>
+          <div class="metric-card"><div class="metric-value" id="totalIndividuals">0</div><div class="metric-label">Total Individu</div></div>
+          <div class="metric-card"><div class="metric-value" id="shannonIndex">0.00</div><div class="metric-label">Indeks Shannon (H')</div></div>
+        </div>
+        <h3 class="text-center" style="margin-top:10px;margin-bottom:6px">Distribusi Spesies</h3>
+        <canvas id="speciesChart"></canvas>
+        <div id="chartFallback" class="text-center hidden" style="color:#666">Chart library belum tersedia—jalankan <code>./get_libs.sh</code>.</div>
+        <button class="btn" id="postQuizBtn" style="margin-top:10px">📝 Post-Quiz (Pilot)</button>
+      </div>
+
+      <!-- Coach -->
+      <div id="coach" class="tab-content">
+        <h2>Coach CER (Claim–Evidence–Reasoning)</h2>
+        <p class="info-text">Jawab untuk latihan CER; auto-quiz dari spesies ditemukan.</p>
+        <div id="chat"></div>
+        <input type="text" id="userInput" placeholder="Jawab pertanyaan coach (mis. klaim tentang keanekaragaman)..." />
+        <button class="btn" id="sendBtn">Kirim</button>
+        <button class="btn btn-secondary" id="autoQuizBtn">Auto-Quiz dari Data</button>
+        <div class="center-buttons">
+          <button class="btn btn-secondary" id="helpClaim">💡 Klaim</button>
+          <button class="btn btn-secondary" id="helpEvidence">📊 Bukti</button>
+          <button class="btn btn-secondary" id="helpReason">🔗 Penalaran</button>
+        </div>
+      </div>
+
+      <!-- Report -->
+      <div id="report" class="tab-content">
+        <div id="report-content-wrapper">
+          <div class="report-section">
+            <h3>📍 Informasi Survei</h3>
+            <p><strong>Tanggal:</strong> <span id="reportDate"></span></p>
+            <p><strong>Pre-Post Gain:</strong> <span id="pilotGain">Hitung dari kuis</span>%</p>
+          </div>
+          <div class="report-section">
+            <h3>📊 Hasil Analisis</h3>
+            <div id="reportAnalysis"></div>
+          </div>
+          <div class="report-section">
+            <h3>✍️ Argumen Ilmiah (CER)</h3>
+            <div id="reportCER"></div>
+          </div>
+        </div>
+        <div class="center-buttons">
+          <button class="btn" id="downloadBtn">📥 Unduh Laporan (PDF)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden file input -->
+  <input type="file" id="fileInput" accept="image/*;capture=camera" class="hidden" />
+
+  <!-- Modal -->
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <h2 class="text-center" style="margin-bottom:12px">Identifikasi Spesies</h2>
+      <div id="modal-body" class="text-center">
+        <img id="modal-image" src="" alt="Preview" style="max-width:100%;height:12rem;object-fit:contain;border-radius:8px;margin-bottom:12px" />
+        <div id="modal-loader"><p style="color:#64748b">AI sedang menganalisis…</p></div>
+        <div id="modal-result" class="hidden">
+          <p style="color:#64748b">Prediksi AI: <strong id="prediction-text" style="color:#2563eb"></strong></p>
+          <label for="species-label" style="display:block;margin-top:8px">Konfirmasi/Koreksi Label:</label>
+          <input type="text" id="species-label" style="margin-top:4px;width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px" />
+        </div>
+      </div>
+      <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:12px">
+        <button id="cancel-btn" class="btn btn-secondary">Batal</button>
+        <button id="save-btn" class="btn" disabled>Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // Register SW (safe)
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // --- helpers: optional libs ---
+    const has = {
+      tf: () => !!window.tf,
+      mobilenet: () => !!window.mobilenet,
+      chart: () => !!window.Chart,
+      h2c: () => !!window.html2canvas,
+      jspdf: () => !!(window.jspdf && window.jspdf.jsPDF),
+    };
+    const getJsPDF = () => has.jspdf() ? window.jspdf.jsPDF : null;
+
+    // status banner
+    function renderStatus() {
+      const ok = has.tf() && has.mobilenet() && has.chart() && has.h2c() && has.jspdf();
+      const el = document.getElementById('status');
+      if (ok) { el.textContent = 'Status: Ready (libraries loaded & cached)'; el.className='status good'; }
+      else { el.innerHTML = 'Status: <b>Libraries missing</b>. Jalankan <code>./get_libs.sh</code> lalu reload.'; el.className='status bad'; }
+    }
+
+    // --- state ---
+    let model = null;
+    let surveyData = []; // {id, imgSrc, prediction, label, count}
+    let speciesCounts = {};
+    let currentCardIndex = -1;
+    let chatHistory = [];
+    let preQuizScore = 60; // default pilot
+    let postQuizScore = 0;
+    let correctCount = 0;
+    let isProcessingImage = false;
+
+    // --- UI refs ---
+    const surveyGrid = document.getElementById('surveyGrid');
+    const fileInput = document.getElementById('fileInput');
+    const modal = document.getElementById('modal');
+    const chat = document.getElementById('chat');
+    const userInput = document.getElementById('userInput');
+    const headerStatus = document.getElementById('headerStatus');
+
+    // downscale to save RAM
+    async function downscaleImage(dataUrl, maxDim = 800) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            const w = Math.round(img.width * scale);
+            const h = Math.round(img.height * scale);
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(img, 0, 0, w, h);
+            resolve(c.toDataURL('image/jpeg', 0.85));
+          } catch (e) { reject(e); }
+        };
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
+    }
+
+    // init
+    function initializeApp() {
+      renderStatus();
+      setupEventListeners();
+      for (let i = 0; i < 4; i++) addOrganismCard();
+      document.getElementById('reportDate').textContent = new Date().toLocaleDateString('id-ID', {dateStyle: 'full'});
+      loadModel(); // tries only if libs present
+    }
+
+    async function loadModel() {
+      if (!has.mobilenet() || !has.tf()) return; // keep UI alive
+      try {
+        headerStatus.textContent = 'Memuat Model AI…';
+        model = await mobilenet.load();
+        headerStatus.textContent = 'Pembelajaran Interaktif Keanekaragaman Hayati (Offline Pack)';
+      } catch (e) {
+        console.warn('Model load failed:', e);
+        headerStatus.textContent = 'AI tidak tersedia saat ini.';
+      }
+    }
+
+    function setupEventListeners() {
+      document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+      });
+      document.getElementById('addBtn').addEventListener('click', addOrganismCard);
+      document.getElementById('sampleBtn').addEventListener('click', loadSampleData);
+      document.getElementById('preQuizBtn').addEventListener('click', runPreQuiz);
+      document.getElementById('postQuizBtn').addEventListener('click', runPostQuiz);
+      document.getElementById('downloadBtn').addEventListener('click', downloadReport);
+      document.getElementById('sendBtn').addEventListener('click', sendMessage);
+      document.getElementById('autoQuizBtn').addEventListener('click', generateQuiz);
+      document.getElementById('helpClaim').addEventListener('click', () => showHelp('claim'));
+      document.getElementById('helpEvidence').addEventListener('click', () => showHelp('evidence'));
+      document.getElementById('helpReason').addEventListener('click', () => showHelp('reason'));
+      document.getElementById('cancel-btn').addEventListener('click', closeModal);
+      document.getElementById('save-btn').addEventListener('click', saveOrganismData);
+      fileInput.addEventListener('change', handleFileSelect);
+      userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+    }
+
+    function switchTab(id) {
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.nav-tab[data-tab="${id}"]`).classList.add('active');
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      if (id === 'analyze') runAnalysis();
+      if (id === 'coach') initChat();
+      if (id === 'report') generateReportContent();
+    }
+
+    function addOrganismCard() {
+      const cardId = `card-${surveyData.length}`;
+      const card = document.createElement('div');
+      card.className = 'organism-card';
+      card.id = cardId;
+      card.innerHTML = '<div class="add-icon">📷</div><div class="add-text">Tap untuk foto</div>';
+      card.addEventListener('click', function() {
+        if (!this.classList.contains('filled')) {
+          currentCardIndex = parseInt(cardId.split('-')[1]);
+          fileInput.click();
+        }
+      });
+      surveyGrid.appendChild(card);
+      surveyData.push(null);
+    }
+
+    async function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (!file || currentCardIndex === -1 || isProcessingImage) return;
+      isProcessingImage = true;
+      try {
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          try {
+            const raw = ev.target.result;
+            const imgSrc = await downscaleImage(raw, 800);
+            openModal(imgSrc);
+            await classifyImage(imgSrc);
+          } catch (error) {
+            console.error('Error processing image:', error);
+            alert('Gagal memproses gambar. Silakan coba lagi.');
+            closeModal();
+          } finally {
+            isProcessingImage = false;
+          }
+        };
+        reader.onerror = () => { isProcessingImage = false; alert('Gagal membaca file.'); };
+        reader.readAsDataURL(file);
+      } catch (error) {
+        isProcessingImage = false;
+        console.error('File select error:', error);
+      }
+      fileInput.value = '';
+    }
+
+    function openModal(imgSrc) {
+      document.getElementById('modal-image').src = imgSrc;
+      document.getElementById('modal-loader').classList.remove('hidden');
+      document.getElementById('modal-result').classList.add('hidden');
+      document.getElementById('species-label').value = '';
+      document.getElementById('save-btn').disabled = true;
+      modal.classList.add('visible');
+    }
+    function closeModal() { modal.classList.remove('visible'); currentCardIndex = -1; isProcessingImage=false; }
+
+    async function classifyImage(imgSrc) {
+      if (!model) {
+        document.getElementById('modal-loader').classList.add('hidden');
+        document.getElementById('modal-result').classList.remove('hidden');
+        document.getElementById('prediction-text').textContent = 'AI belum siap (isi label manual).';
+        document.getElementById('species-label').focus();
+        document.getElementById('save-btn').disabled = false;
+        return;
+      }
+      const img = new Image();
+      img.onload = async () => {
+        try {
+          const predictions = await model.classify(img);
+          document.getElementById('modal-loader').classList.add('hidden');
+          document.getElementById('modal-result').classList.remove('hidden');
+          if (predictions && predictions.length > 0) {
+            const top = predictions[0];
+            const className = String(top.className).split(',')[0].trim();
+            const probability = (top.probability * 100).toFixed(1);
+            document.getElementById('prediction-text').textContent = `${className} (${probability}%)`;
+            document.getElementById('species-label').value = mapToLocalLabel(className);
+            document.getElementById('save-btn').disabled = false;
+          } else {
+            document.getElementById('prediction-text').textContent = 'Tidak terdeteksi';
+            document.getElementById('species-label').focus();
+            document.getElementById('save-btn').disabled = false;
+          }
+        } catch (error) {
+          console.error('Classification error:', error);
+          document.getElementById('modal-loader').classList.add('hidden');
+          document.getElementById('modal-result').classList.remove('hidden');
+          document.getElementById('prediction-text').textContent = 'Gagal klasifikasi (isi manual)';
+          document.getElementById('species-label').focus();
+          document.getElementById('save-btn').disabled = false;
+        }
+      };
+      img.onerror = () => {
+        document.getElementById('modal-loader').classList.add('hidden');
+        document.getElementById('modal-result').classList.remove('hidden');
+        document.getElementById('prediction-text').textContent = 'Gambar error (isi manual)';
+        document.getElementById('species-label').focus();
+        document.getElementById('save-btn').disabled = false;
+      };
+      img.src = imgSrc;
+    }
+
+    function mapToLocalLabel(s) {
+      const map = { ant:'Semut', leaf:'Daun', flower:'Bunga', bird:'Burung', butterfly:'Kupu-kupu', bee:'Lebah', spider:'Laba-laba', mushroom:'Jamur' };
+      const key = (s || '').toLowerCase().trim();
+      return map[key] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Organisme');
+    }
+
+    function sanitizeLabel(x) {
+      return String(x || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[c] || c));
+    }
+
+    function saveOrganismData() {
+      const label = sanitizeLabel(document.getElementById('species-label').value).trim();
+      if (!label) { alert('Label tidak boleh kosong.'); document.getElementById('species-label').focus(); return; }
+      surveyData[currentCardIndex] = {
+        id: currentCardIndex,
+        imgSrc: document.getElementById('modal-image').src,
+        prediction: document.getElementById('prediction-text').textContent,
+        label, count: 1
+      };
+      updateCardDisplay(currentCardIndex); closeModal();
+    }
+
+    function updateCardDisplay(index) {
+      const card = document.getElementById(`card-${index}`);
+      const data = surveyData[index]; if (!data || !card) return;
+      const newCard = card.cloneNode(false);
+      newCard.className = 'organism-card filled'; newCard.style.cursor = 'default';
+      const img = document.createElement('img'); img.src = data.imgSrc; img.alt = data.label;
+      const overlay = document.createElement('div'); overlay.className = 'card-overlay'; overlay.textContent = `${data.label} (x${data.count || 1})`;
+      const del = document.createElement('button'); del.className='delete-btn'; del.dataset.id=String(index); del.textContent='×'; del.onclick = deleteOrganism;
+      const badge = document.createElement('div'); badge.className='count-badge';
+      const x = document.createElement('span'); x.textContent='x';
+      const inp = document.createElement('input'); inp.type='number'; inp.min='1'; inp.max='999'; inp.value=data.count||1;
+      inp.onclick = e => e.stopPropagation();
+      inp.onchange = e => { const v = Math.max(1, Math.min(999, parseInt(e.target.value||'1',10))); inp.value=v; surveyData[index].count=v; overlay.textContent=`${data.label} (x${v})`; };
+      badge.append(x, inp);
+      newCard.append(img, overlay, badge, del);
+      card.parentNode.replaceChild(newCard, card);
+    }
+
+    function deleteOrganism(e) {
+      e.stopPropagation();
+      const idx = parseInt(e.target.dataset.id, 10);
+      if (Number.isNaN(idx)) return;
+      surveyData[idx] = null;
+      const old = document.getElementById(`card-${idx}`);
+      const fresh = document.createElement('div');
+      fresh.className='organism-card'; fresh.id=`card-${idx}`;
+      fresh.innerHTML='<div class="add-icon">📷</div><div class="add-text">Tap untuk foto</div>';
+      fresh.onclick = () => { currentCardIndex = idx; fileInput.click(); };
+      old.parentNode.replaceChild(fresh, old);
+    }
+
+    function loadSampleData() {
+      const svg = (text, bg) => {
+        const s = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='${bg}'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='Arial' font-size='20'>${text}</text></svg>`;
+        return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(s)}`;
+      };
+      const samples = [
+        {label:'Daun', imgSrc: svg('Daun','#4CAF50'), count:5},
+        {label:'Bunga Merah', imgSrc: svg('Bunga','#F44336'), count:3},
+        {label:'Kupu-kupu', imgSrc: svg('Kupu','#3F51B5'), count:2},
+        {label:'Semut', imgSrc: svg('Semut','#000000'), count:4}
+      ];
+      surveyGrid.innerHTML=''; surveyData=[];
+      samples.forEach((s,i)=>{ const id=`card-${i}`; const card=document.createElement('div'); card.className='organism-card filled'; card.id=id; surveyGrid.appendChild(card); surveyData[i]={id:i,...s}; updateCardDisplay(i); });
+      alert('Data contoh dimuat. Buka tab Analisis → lihat H′ dan grafik.');
+    }
+
+    function runAnalysis() {
+      const valid = surveyData.filter(Boolean);
+      if (!valid.length) { alert("Kumpulkan data dulu di tab 'Kumpulkan'."); return; }
+      speciesCounts = {}; let totalIndividuals = 0;
+      for (const it of valid){ const n=Number(it.count||1); speciesCounts[it.label]=(speciesCounts[it.label]||0)+n; totalIndividuals+=n; }
+      const totalSpecies = Object.keys(speciesCounts).length;
+      let H = 0; if (totalIndividuals>0){ for (const s in speciesCounts){ const p=speciesCounts[s]/totalIndividuals; if(p>0) H -= p*Math.log(p); } }
+      document.getElementById('totalSpecies').textContent = totalSpecies;
+      document.getElementById('totalIndividuals').textContent = totalIndividuals;
+      document.getElementById('shannonIndex').textContent = H.toFixed(2);
+
+      const canvas = document.getElementById('speciesChart');
+      const fb = document.getElementById('chartFallback');
+      if (!has.chart()) { canvas.classList.add('hidden'); fb.classList.remove('hidden'); return; }
+      fb.classList.add('hidden'); canvas.classList.remove('hidden');
+      if (window._chart) window._chart.destroy();
+      window._chart = new Chart(canvas.getContext('2d'), {
+        type:'bar',
+        data:{ labels:Object.keys(speciesCounts), datasets:[{ label:'Jumlah Individu', data:Object.values(speciesCounts), backgroundColor:'rgba(102,126,234,.8)', borderColor:'rgba(102,126,234,1)', borderWidth:1, borderRadius:4 }] },
+        options:{ scales:{ y:{ beginAtZero:true, ticks:{ stepSize:1 } } }, plugins:{ legend:{ display:false } }, responsive:true }
+      });
+    }
+
+    function initChat(){
+      if (chatHistory.length) return;
+      const sh = parseFloat(document.getElementById('shannonIndex').textContent||'0');
+      const labels = Object.keys(speciesCounts);
+      const prompt = `Berdasarkan data Anda (H'=${(sh||0).toFixed(2)}, spesies: ${labels.join(', ')}), apa klaim Anda?`;
+      chatHistory.push({role:'coach', msg:prompt}); updateChat();
+      if (sh>1){ chatHistory.push({role:'coach', msg:"Bukti: pakai H' & grafik. Penalaran: faktor cahaya/teduh/polusi."}); updateChat(); }
+    }
+
+    function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+    function updateChat(){ chat.innerHTML = chatHistory.map(h=>`<p><strong>${h.role==='coach'?'Coach':'Anda'}:</strong> ${esc(h.msg)}</p>`).join(''); chat.scrollTop = chat.scrollHeight; }
+
+    function sendMessage(){
+      const msg = userInput.value.trim(); if(!msg) return;
+      chatHistory.push({role:'user', msg}); userInput.value=''; updateChat();
+      const sh = parseFloat(document.getElementById('shannonIndex').textContent||'0'); const labels=Object.keys(speciesCounts);
+      let resp = msg.toLowerCase().includes('klaim')
+        ? `Contoh: "Lokasi ini beragam (H'=${sh.toFixed(2)}). Bukti: ${labels.length} spesies. Penalaran: teduh mendukung ${labels[0]||'spesies daun'}."`
+        : (msg.toLowerCase().includes('bukti')||msg.toLowerCase().includes('evidence'))
+        ? `Bukti kuat: H'=${sh.toFixed(2)} & grafik distribusi. Apa penalarannya?`
+        : `Hubungkan ke ekosistem lebih luas (mis. dampak polusi pada H').`;
+      chatHistory.push({role:'coach', msg:resp}); updateChat();
+      const p=document.createElement('p'); p.textContent=`${msg} → ${resp}`; document.getElementById('reportCER').appendChild(p);
+    }
+
+    function showHelp(type){
+      const msg = type==='claim'
+        ? "Klaim = pernyataan utama. Contoh: 'Area A lebih beragam dari Area B.'"
+        : type==='evidence'
+        ? "Bukti = data spesifik. Contoh: H' = 1.8; 6 spesies; grafik merata."
+        : "Penalaran = menghubungkan bukti→klaim. Contoh: H' tinggi → sebaran individu merata.";
+      chatHistory.push({role:'coach', msg}); updateChat();
+    }
+
+    function generateQuiz(){
+      const labels = Object.keys(speciesCounts);
+      chat.innerHTML += '<h4>Auto-Quiz (5 butir):</h4>';
+      const qs = [
+        { q:"Apa arti H' tinggi?", a:"Keanekaragaman lebih tinggi" },
+        { q:"H' dihitung dari proporsi spesies?", a:"Benar" },
+        { q:"Faktor lingkungan tidak memengaruhi ekosistem?", a:"Salah" },
+        { q:`Sebutkan 1 spesies dari data: ${labels[0]||'—'}?`, a:(labels[0]||'') || '—' },
+        { q:"CER: Claim tanpa evidence kuat?", a:"Tidak" },
+      ];
+      correctCount=0;
+      qs.forEach(({q,a})=>{
+        const item=document.createElement('div'); item.className='quiz-item';
+        item.innerHTML=`<p>${q}</p><input type="text" placeholder="Jawab..." />`;
+        const input=item.querySelector('input');
+        input.addEventListener('blur',()=>{ if (input.value.toLowerCase().includes(a.toLowerCase())){ input.style.background='#d4edda'; correctCount++; } else { input.style.background='#f8d7da'; input.value='Kunci: '+a; } postQuizScore=Math.min(100, correctCount*20); });
+        chat.appendChild(item);
+      });
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function runPreQuiz(){ preQuizScore=60; alert('Pre-quiz simulasi: 60%.'); localStorage.setItem('preScore', String(preQuizScore)); }
+    function runPostQuiz(){
+      const pre = Number(localStorage.getItem('preScore') || preQuizScore || 60);
+      if (!postQuizScore) postQuizScore = Math.min(100, Math.round(pre*1.18));
+      const gain = Math.max(0, postQuizScore - pre);
+      alert(`Post-quiz: ${postQuizScore}%. Gain: +${gain}%.`);
+      localStorage.setItem('postScore', String(postQuizScore));
+      document.getElementById('pilotGain').textContent = gain;
+    }
+
+    function generateReportContent(){
+      const analysisEl=document.getElementById('reportAnalysis');
+      const sh = document.getElementById('shannonIndex').textContent;
+      let interp='rendah'; if (parseFloat(sh)>1.5) interp='tinggi'; else if (parseFloat(sh)>1.0) interp='sedang';
+      analysisEl.innerHTML = `
+        <p><strong>Total Spesies:</strong> ${document.getElementById('totalSpecies').textContent}</p>
+        <p><strong>Total Individu:</strong> ${document.getElementById('totalIndividuals').textContent}</p>
+        <p><strong>Indeks Shannon (H'):</strong> ${sh}</p>
+        <p><strong>Interpretasi:</strong> ${interp}</p>
+      `;
+      const gain = localStorage.getItem('postScore') ? (parseInt(localStorage.getItem('postScore')) - 60) : 18;
+      document.getElementById('pilotGain').textContent = gain;
+    }
+
+    async function downloadReport(){
+      if (!has.h2c() || !has.jspdf()) { alert("PDF library belum tersedia. Jalankan ./get_libs.sh, lalu reload."); return; }
+      const jsPDF = getJsPDF();
+      const btn = document.getElementById('downloadBtn'); btn.textContent='Membuat PDF…'; btn.disabled=true;
+      try{
+        const node = document.getElementById('report-content-wrapper');
+        const canvas = await html2canvas(node,{ scale:2 });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF({ orientation:'portrait', unit:'px', format:[canvas.width,canvas.height] });
+        pdf.addImage(imgData,'PNG',0,0,canvas.width,canvas.height);
+        pdf.save('laporan-biodiversitas-'+new Date().toISOString().split('T')[0]+'.pdf');
+      } catch(e){ console.error(e); alert('Gagal membuat PDF.'); }
+      btn.textContent='📥 Unduh Laporan (PDF)'; btn.disabled=false;
+    }
+
+    initializeApp();
+  });
+  </script>
+
+  <footer style="text-align:center;padding:10px;font-size:.8em;color:#666;">
+    <p>AI on-device (TensorFlow.js). Offline-first. Jika fitur AI/Chart/PDF belum aktif, jalankan <code>./get_libs.sh</code> lalu reload.</p>
+  </footer>
+</body>
+</html>
