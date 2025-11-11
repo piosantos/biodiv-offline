@@ -3,6 +3,7 @@ const CACHE = 'biodiversity-offline-v4';
 const CORE = [
   './',
   './index.html',
+  './src/utils/sanitizeLabel.js',
   './tf.min.js',
   './mobilenet.min.js',
   './chart.umd.min.js',
