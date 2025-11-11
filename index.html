@@ -557,7 +557,10 @@
         <p><strong>Indeks Shannon (H'):</strong> ${sh}</p>
         <p><strong>Interpretasi:</strong> ${interp}</p>
       `;
-      const gain = localStorage.getItem('postScore') ? (parseInt(localStorage.getItem('postScore')) - 60) : 18;
+      const pre = Number(localStorage.getItem('preScore') || preQuizScore || 60);
+      let post = Number(localStorage.getItem('postScore'));
+      if (!post) post = Math.min(100, Math.round(pre * 1.18));
+      const gain = Math.max(0, post - pre);
       document.getElementById('pilotGain').textContent = gain;
     }
 
