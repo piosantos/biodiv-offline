@@ -294,7 +294,7 @@
       const card = document.createElement('div');
       card.className = 'organism-card';
       card.id = cardId;
-      card.innerHTML = '<div class="add-icon">📷</div><div class="add-text">Tap untuk foto</div>';
+      card.innerHTML = '<div class="add-icon">📷</div><div class="add-text">Ketuk untuk foto</div>';
       card.addEventListener('click', function() {
         if (!this.classList.contains('filled')) {
           currentCardIndex = parseInt(cardId.split('-')[1]);
@@ -438,7 +438,7 @@
       const old = document.getElementById(`card-${idx}`);
       const fresh = document.createElement('div');
       fresh.className='organism-card'; fresh.id=`card-${idx}`;
-      fresh.innerHTML='<div class="add-icon">📷</div><div class="add-text">Tap untuk foto</div>';
+      fresh.innerHTML='<div class="add-icon">📷</div><div class="add-text">Ketuk untuk foto</div>';
       fresh.onclick = () => { currentCardIndex = idx; fileInput.click(); };
       old.parentNode.replaceChild(fresh, old);
     }
