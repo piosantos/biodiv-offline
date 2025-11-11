@@ -218,6 +218,31 @@
     const chat = document.getElementById('chat');
     const userInput = document.getElementById('userInput');
     const headerStatus = document.getElementById('headerStatus');
+    const chartCanvas = document.getElementById('speciesChart');
+    const chartFallback = document.getElementById('chartFallback');
+    const chartFallbackDefault = chartFallback.textContent;
+
+    function resetAnalysisSummary() {
+      document.getElementById('totalSpecies').textContent = '0';
+      document.getElementById('totalIndividuals').textContent = '0';
+      document.getElementById('shannonIndex').textContent = '0.00';
+    }
+
+    function displayChartFallback(message) {
+      chartFallback.textContent = message ?? chartFallbackDefault;
+      chartFallback.classList.remove('hidden');
+      chartCanvas.classList.add('hidden');
+      if (window._chart) {
+        window._chart.destroy();
+        window._chart = null;
+      }
+    }
+
+    function hideChartFallback() {
+      chartFallback.textContent = chartFallbackDefault;
+      chartFallback.classList.add('hidden');
+      chartCanvas.classList.remove('hidden');
+    }
 
     // downscale to save RAM
     async function downscaleImage(dataUrl, maxDim = 800) {
@@ -458,8 +483,14 @@
 
     function runAnalysis() {
       const valid = surveyData.filter(Boolean);
-      if (!valid.length) { alert("Kumpulkan data dulu di tab 'Kumpulkan'."); return; }
-      speciesCounts = {}; let totalIndividuals = 0;
+      speciesCounts = {};
+      if (!valid.length) {
+        resetAnalysisSummary();
+        displayChartFallback('Belum ada data organisme untuk dianalisis.');
+        alert("Kumpulkan data dulu di tab 'Kumpulkan'.");
+        return;
+      }
+      let totalIndividuals = 0;
       for (const it of valid){ const n=Number(it.count||1); speciesCounts[it.label]=(speciesCounts[it.label]||0)+n; totalIndividuals+=n; }
       const totalSpecies = Object.keys(speciesCounts).length;
       let H = 0; if (totalIndividuals>0){ for (const s in speciesCounts){ const p=speciesCounts[s]/totalIndividuals; if(p>0) H -= p*Math.log(p); } }
@@ -467,12 +498,13 @@
       document.getElementById('totalIndividuals').textContent = totalIndividuals;
       document.getElementById('shannonIndex').textContent = H.toFixed(2);
 
-      const canvas = document.getElementById('speciesChart');
-      const fb = document.getElementById('chartFallback');
-      if (!has.chart()) { canvas.classList.add('hidden'); fb.classList.remove('hidden'); return; }
-      fb.classList.add('hidden'); canvas.classList.remove('hidden');
+      if (!has.chart()) {
+        displayChartFallback(chartFallbackDefault);
+        return;
+      }
+      hideChartFallback();
       if (window._chart) window._chart.destroy();
-      window._chart = new Chart(canvas.getContext('2d'), {
+      window._chart = new Chart(chartCanvas.getContext('2d'), {
         type:'bar',
         data:{ labels:Object.keys(speciesCounts), datasets:[{ label:'Jumlah Individu', data:Object.values(speciesCounts), backgroundColor:'rgba(102,126,234,.8)', borderColor:'rgba(102,126,234,1)', borderWidth:1, borderRadius:4 }] },
         options:{ scales:{ y:{ beginAtZero:true, ticks:{ stepSize:1 } } }, plugins:{ legend:{ display:false } }, responsive:true }
