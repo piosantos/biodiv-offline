@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Biodiversity Survey Coach — Offline (Safe)</title>
 
-  <!-- Local libs (download once with get_libs.sh). App still works without them. -->
+  <!-- Local libraries are bundled with the release. The app degrades safely if one is missing. -->
 <script src="tf.min.js" defer></script>
 <script src="mobilenet.min.js" defer></script>
 <script src="chart.umd.min.js" defer></script>
@@ -46,8 +46,11 @@
     .card-overlay{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);color:#fff;padding:6px;border-radius:0 0 8px 8px;font-size:.8em;text-align:center;}
     .count-badge{position:absolute;top:6px;left:6px;background:rgba(255,255,255,.9);border-radius:12px;padding:2px 6px;font-size:.8em;display:flex;align-items:center;gap:4px;}
     .count-badge input{width:48px;border:1px solid #cbd5e1;border-radius:6px;padding:2px 6px;}
+    .count-badge input.invalid-count{border-color:#dc2626;background:#fef2f2;}
+    .count-error{position:absolute;top:32px;left:6px;background:#fff1f2;color:#b91c1c;border-radius:5px;padding:3px 6px;font-size:.72em;z-index:2;}
     .delete-btn{position:absolute;top:5px;right:5px;background:rgba(239,68,68,.9);color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border:none;font-weight:bold;cursor:pointer;opacity:0;transition:opacity .2s;}
-    .organism-card.filled:hover .delete-btn{opacity:1;}
+    .organism-card:focus-visible,.btn:focus-visible,.nav-tab:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #f59e0b;outline-offset:2px;}
+    .organism-card.filled:hover .delete-btn,.delete-btn:focus-visible{opacity:1;}
     .btn{background:linear-gradient(135deg,var(--primary-start),var(--primary-end));color:#fff;border:none;padding:12px 25px;border-radius:25px;font-size:.95em;font-weight:600;cursor:pointer;margin:8px 4px;display:inline-block;transition:transform .1s;}
     .btn:disabled{background:#ccc;cursor:not-allowed;}
     .btn:active:not(:disabled){transform:scale(.98);}
@@ -57,14 +60,35 @@
     .metric-card{background:#f8f9fa;padding:15px;border-radius:10px;text-align:center;}
     .metric-value{font-size:2em;color:var(--primary-text);font-weight:bold;}
     .metric-label{color:#666;font-size:.85em;margin-top:5px;}
+    .interpretation-panel{margin-top:14px;padding:12px;border:1px solid #dbe4ff;border-radius:8px;background:#f8faff;color:#334155;line-height:1.5;}
+    .interpretation-panel h3{font-size:1em;margin-bottom:6px;color:#334155;}
+    .interpretation-panel p{margin:6px 0;}
     .report-section{background:#f8f9fa;padding:15px;border-radius:10px;margin:15px 0;}
     .report-section h3{color:var(--primary-text);margin-bottom:10px;font-size:1.1em;}
     .modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
     .modal.visible{opacity:1;pointer-events:auto;}
-    .modal-content{background:#fff;border-radius:15px;padding:20px;width:90%;max-width:400px;}
+    .modal-content{background:#fff;border-radius:15px;padding:20px;width:90%;max-width:460px;max-height:92vh;overflow-y:auto;}
+    .form-field{margin-top:10px;text-align:left;}
+    .form-field label{display:block;margin-bottom:4px;font-weight:600;color:#334155;}
+    .form-field input,.form-field select,.form-field textarea{width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font:inherit;background:#fff;}
+    .form-field textarea{min-height:72px;resize:vertical;}
+    .candidate-panel{background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px;margin-top:8px;text-align:left;}
+    .candidate-warning{background:#fff7ed;border-left:4px solid #f97316;color:#7c2d12;padding:8px;margin-top:10px;font-size:.86em;line-height:1.4;text-align:left;}
+    .validation-message{min-height:1.4em;color:#b91c1c;font-size:.85em;margin-top:8px;text-align:left;}
+    .observation-detail{border-top:1px solid #dbe2ea;padding:10px 0;}
+    .observation-detail:first-child{border-top:0;}
+    .observation-detail h4{color:#334155;margin-bottom:5px;}
     #chat{border:1px solid #ccc;height:220px;overflow-y:auto;padding:10px;margin:10px 0;background:#f9f9f9;}
     #userInput{width:70%;padding:8px;border:1px solid #ccc;border-radius:5px;}
+    .coach-input-label{display:block;margin-top:10px;margin-bottom:4px;font-weight:600;color:#334155;}
     .quiz-item{background:#e3f2fd;padding:10px;margin:5px 0;border-radius:5px;}
+    .quiz-item input{width:100%;margin-top:6px;padding:8px;border:1px solid #cbd5e1;border-radius:6px;}
+    .quiz-status{margin:10px 0;color:#475569;font-weight:600;}
+    .coach-context{background:#eef2ff;border-left:4px solid #667eea;padding:10px;margin:10px 0;border-radius:6px;}
+    .persistence-panel{margin-top:12px;padding:10px 12px;border:1px solid #dbe4ff;border-radius:8px;background:#f8faff;color:#475569;font-size:.9em;line-height:1.45;}
+    .persistence-panel p{margin:4px 0;}
+    .persistence-status{font-weight:600;color:#334155;}
+    .persistence-status.error{color:#b91c1c;}
     .hidden{display:none}
     .text-center{text-align:center}
   </style>
@@ -88,35 +112,46 @@
       <!-- Collect -->
       <div id="collect" class="tab-content active">
         <h2>Kumpulkan Data Organisme</h2>
-        <p class="info-text">Ambil foto atau unggah gambar organisme (8–12 foto). Jika AI belum siap, Anda tetap bisa memberi label manual.</p>
+        <p class="info-text">Ambil foto atau unggah gambar organisme (8–12 foto). Jika model belum siap, Anda tetap bisa memberi label manual.</p>
         <div class="survey-grid" id="surveyGrid"></div>
         <div class="center-buttons">
           <button class="btn" id="addBtn">➕ Tambah Slot Foto</button>
           <button class="btn btn-secondary" id="sampleBtn">📁 Muat Data Contoh</button>
+          <button class="btn btn-secondary" id="clearSurveyBtn">Hapus Data Survei Lokal</button>
           <button class="btn btn-secondary" id="preQuizBtn">📝 Pre-Quiz (Pilot)</button>
         </div>
-        <p class="info-text">Troubleshooting: jalankan <code>./get_libs.sh</code> lalu reload jika fitur AI/PDF/Chart belum aktif.</p>
+        <div class="persistence-panel">
+          <p id="persistenceStatus" class="persistence-status" aria-live="polite">Memeriksa penyimpanan lokal…</p>
+          <p id="surveyNotice" class="info-text hidden" aria-live="polite"></p>
+          <p>Foto dan data survei disimpan hanya di penyimpanan browser pada perangkat ini dan tidak dikirim ke server oleh aplikasi. Menghapus data browser juga dapat menghapus survei ini.</p>
+          <p>Foto dapat menggunakan ruang penyimpanan browser yang cukup besar.</p>
+        </div>
+        <p class="info-text">Troubleshooting: jika fitur model, PDF, atau chart belum aktif, pulihkan paket aplikasi lengkap agar seluruh library lokal tersedia, lalu muat ulang.</p>
       </div>
 
       <!-- Analyze -->
       <div id="analyze" class="tab-content">
         <h2>Analisis Keanekaragaman</h2>
         <div class="metric-grid">
-          <div class="metric-card"><div class="metric-value" id="totalSpecies">0</div><div class="metric-label">Total Spesies</div></div>
+          <div class="metric-card"><div class="metric-value" id="totalSpecies">0</div><div class="metric-label">Jumlah Kategori Operasional</div></div>
           <div class="metric-card"><div class="metric-value" id="totalIndividuals">0</div><div class="metric-label">Total Individu</div></div>
           <div class="metric-card"><div class="metric-value" id="shannonIndex">0.00</div><div class="metric-label">Indeks Shannon (H')</div></div>
         </div>
-        <h3 class="text-center" style="margin-top:10px;margin-bottom:6px">Distribusi Spesies</h3>
+        <h3 class="text-center" style="margin-top:10px;margin-bottom:6px">Distribusi Kategori</h3>
         <canvas id="speciesChart"></canvas>
-        <div id="chartFallback" class="text-center hidden" style="color:#666">Chart library belum tersedia—jalankan <code>./get_libs.sh</code>.</div>
+        <div id="chartFallback" class="text-center hidden" style="color:#666">Library chart lokal belum tersedia. Pulihkan paket aplikasi lengkap, lalu muat ulang.</div>
+        <div id="analysisInterpretation" class="interpretation-panel"></div>
         <button class="btn" id="postQuizBtn" style="margin-top:10px">📝 Post-Quiz (Pilot)</button>
       </div>
 
       <!-- Coach -->
       <div id="coach" class="tab-content">
         <h2>Coach CER (Claim–Evidence–Reasoning)</h2>
-        <p class="info-text">Jawab untuk latihan CER; auto-quiz dari spesies ditemukan.</p>
+        <p class="info-text">Jawab untuk latihan CER; auto-quiz dari kategori tercatat.</p>
+        <div id="coachDataContext" class="coach-context"></div>
         <div id="chat"></div>
+        <div id="assessmentPanel"></div>
+        <label for="userInput" class="coach-input-label">Jawaban untuk Coach</label>
         <input type="text" id="userInput" placeholder="Jawab pertanyaan coach (mis. klaim tentang keanekaragaman)..." />
         <button class="btn" id="sendBtn">Kirim</button>
         <button class="btn btn-secondary" id="autoQuizBtn">Auto-Quiz dari Data</button>
@@ -133,11 +168,18 @@
           <div class="report-section">
             <h3>📍 Informasi Survei</h3>
             <p><strong>Tanggal:</strong> <span id="reportDate"></span></p>
-            <p><strong>Pre-Post Gain:</strong> <span id="pilotGain">Hitung dari kuis</span>%</p>
+            <p><strong>Skor awal:</strong> <span id="preAssessmentResult">Belum diukur</span></p>
+            <p><strong>Skor akhir:</strong> <span id="postAssessmentResult">Belum diukur</span></p>
+            <p><strong>Selisih poin persentase:</strong> <span id="assessmentDifference">Belum diukur</span></p>
           </div>
           <div class="report-section">
             <h3>📊 Hasil Analisis</h3>
             <div id="reportAnalysis"></div>
+          </div>
+          <div class="report-section">
+            <h3>🔎 Rincian Observasi</h3>
+            <p>Kategori operasional dapat mencakup label yang belum diverifikasi dan tidak otomatis setara dengan spesies.</p>
+            <div id="reportObservationDetails"></div>
           </div>
           <div class="report-section">
             <h3>✍️ Argumen Ilmiah (CER)</h3>
@@ -155,17 +197,47 @@
   <input type="file" id="fileInput" accept="image/*;capture=camera" class="hidden" />
 
   <!-- Modal -->
-  <div id="modal" class="modal">
+  <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="identification-modal-title" aria-hidden="true" inert>
     <div class="modal-content">
-      <h2 class="text-center" style="margin-bottom:12px">Identifikasi Spesies</h2>
+      <h2 id="identification-modal-title" class="text-center" style="margin-bottom:12px">Kandidat Identifikasi</h2>
       <div id="modal-body" class="text-center">
         <img id="modal-image" src="" alt="Preview" style="max-width:100%;height:12rem;object-fit:contain;border-radius:8px;margin-bottom:12px" />
-        <div id="modal-loader"><p style="color:#64748b">AI sedang menganalisis…</p></div>
-        <div id="modal-result" class="hidden">
-          <p style="color:#64748b">Prediksi AI: <strong id="prediction-text" style="color:#2563eb"></strong></p>
-          <label for="species-label" style="display:block;margin-top:8px">Konfirmasi/Koreksi Label:</label>
-          <input type="text" id="species-label" style="margin-top:4px;width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:6px" />
+        <div id="modal-loader"><p style="color:#64748b">Model sedang menganalisis…</p></div>
+        <div id="modal-result" class="candidate-panel hidden">
+          <p>Kandidat dari Model: <strong id="model-candidate-text">Tidak ada</strong></p>
+          <p>Skor model: <strong id="model-score-text">Tidak ada</strong></p>
+          <p id="model-status" style="color:#64748b;margin-top:4px"></p>
+          <button type="button" id="use-candidate-btn" class="btn btn-secondary" disabled>Gunakan kandidat sebagai label awal</button>
         </div>
+        <p class="candidate-warning">Kandidat dari model bukan identifikasi taksonomi yang telah diverifikasi. Periksa ciri organisme dan gunakan bukti pembanding sebelum menetapkan kesimpulan.</p>
+        <div class="form-field">
+          <label for="final-label">Label akhir</label>
+          <input type="text" id="final-label" maxlength="120" autocomplete="off" />
+        </div>
+        <div class="form-field">
+          <label for="taxonomic-level">Tingkat identifikasi</label>
+          <select id="taxonomic-level">
+            <option value="unknown">Tidak diketahui</option>
+            <option value="species">Spesies</option>
+            <option value="genus">Genus</option>
+            <option value="family">Famili</option>
+            <option value="broad_category">Kategori luas</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="verification-status">Status verifikasi</label>
+          <select id="verification-status">
+            <option value="unverified">Belum diverifikasi</option>
+            <option value="probable">Kemungkinan</option>
+            <option value="verified">Terverifikasi</option>
+            <option value="unresolved">Belum teridentifikasi</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="verification-evidence">Bukti verifikasi</label>
+          <textarea id="verification-evidence" maxlength="1000" placeholder="Contoh: dibandingkan dengan panduan lapangan atau sumber tepercaya."></textarea>
+        </div>
+        <p id="observation-validation" class="validation-message" aria-live="polite"></p>
       </div>
       <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:12px">
         <button id="cancel-btn" class="btn btn-secondary">Batal</button>
@@ -175,6 +247,12 @@
   </div>
 
   <script src="src/utils/sanitizeLabel.js"></script>
+  <script src="src/utils/assessment.js"></script>
+  <script src="src/utils/observationRecord.js"></script>
+  <script src="src/utils/surveyStore.js"></script>
+  <script src="src/utils/biodiversity.js"></script>
+  <script src="src/utils/diversityInterpretation.js"></script>
+  <script src="src/utils/classificationSession.js"></script>
   <script>
   // Register SW (safe)
   if ('serviceWorker' in navigator) {
@@ -197,35 +275,299 @@
       const ok = has.tf() && has.mobilenet() && has.chart() && has.h2c() && has.jspdf();
       const el = document.getElementById('status');
       if (ok) { el.textContent = 'Status: Ready (libraries loaded & cached)'; el.className='status good'; }
-      else { el.innerHTML = 'Status: <b>Libraries missing</b>. Jalankan <code>./get_libs.sh</code> lalu reload.'; el.className='status bad'; }
+      else {
+        const emphasis = document.createElement('strong');
+        emphasis.textContent = 'library lokal tidak lengkap';
+        el.replaceChildren(
+          document.createTextNode('Status: '),
+          emphasis,
+          document.createTextNode('. Pulihkan paket aplikasi lengkap, lalu muat ulang.')
+        );
+        el.className='status bad';
+      }
     }
 
     // --- state ---
     let model = null;
-    let surveyData = []; // {id, imgSrc, prediction, label, count}
-    let speciesCounts = {};
-    let currentCardIndex = -1;
+    let surveyData = []; // canonical ObservationRecord objects or empty slots
     let chatHistory = [];
-    let preQuizScore = 60; // default pilot
-    let postQuizScore = 0;
-    let correctCount = 0;
-    let isProcessingImage = false;
-
+    const classificationController = ClassificationSession.createController();
+    let pendingClassification = null;
+    let inferenceRequestId = null;
+    let modalReturnCardIndex = null;
+    let modalReturnFocusTarget = null;
+    let modalBackgroundInertStates = new Map();
+    let modalFocusTrapActive = false;
+    const surveyStore = SurveyStore.createStore({ indexedDB: window.indexedDB });
+    const persistenceState = {
+      restored: false,
+      saving: false,
+      revision: 0,
+      lastSavedAt: null,
+      storageAvailable: !!window.indexedDB,
+      errorCode: null,
+      statusCode: 'checking',
+      snapshot: null,
+      clearToken: null,
+      repairPending: false,
+      droppedStoredEntryCount: 0,
+      lastRepairCount: 0
+    };
+    const persistenceWrites = SurveyStore.createWriteCoordinator({ delay: 350 });
+    const assessmentStates = {
+      pre: Assessment.createAssessmentState(),
+      post: Assessment.createAssessmentState(),
+      practice: Assessment.createAssessmentState()
+    };
+    const measuredAssessmentQuestions = Assessment.snapshotQuestions([
+      {
+        id: 'diversity',
+        prompt: "Dalam sampel dengan metode yang sebanding, apa yang dirangkum oleh indeks Shannon (H')?",
+        acceptedAnswers: [
+          'Jumlah kategori dan pemerataan individu',
+          'Kekayaan kategori dan pemerataan individu'
+        ]
+      },
+      {
+        id: 'proportion',
+        prompt: "Benar atau salah: H' dihitung menggunakan proporsi tiap kategori operasional yang disertakan.",
+        acceptedAnswers: ['Benar']
+      },
+      {
+        id: 'ecosystem-quality',
+        prompt: "Apakah H' saja cukup untuk membuktikan kualitas suatu ekosistem?",
+        acceptedAnswers: ['Tidak']
+      },
+      {
+        id: 'evidence',
+        prompt: 'Dalam CER, apa fungsi evidence (bukti)?',
+        acceptedAnswers: ['Mendukung klaim', 'Mendukung claim']
+      },
+      {
+        id: 'claim',
+        prompt: 'Apakah claim tanpa evidence sudah menjadi argumen ilmiah yang kuat?',
+        acceptedAnswers: ['Tidak']
+      }
+    ]);
+    const assessmentQuestionSets = { pre: null, post: null, practice: null };
     // --- UI refs ---
     const surveyGrid = document.getElementById('surveyGrid');
     const fileInput = document.getElementById('fileInput');
     const modal = document.getElementById('modal');
     const chat = document.getElementById('chat');
+    const coachDataContext = document.getElementById('coachDataContext');
+    const persistenceStatus = document.getElementById('persistenceStatus');
+    const surveyNotice = document.getElementById('surveyNotice');
     const userInput = document.getElementById('userInput');
     const headerStatus = document.getElementById('headerStatus');
     const chartCanvas = document.getElementById('speciesChart');
     const chartFallback = document.getElementById('chartFallback');
     const chartFallbackDefault = chartFallback.textContent;
+    const finalLabelInput = document.getElementById('final-label');
+    const taxonomicLevelInput = document.getElementById('taxonomic-level');
+    const verificationStatusInput = document.getElementById('verification-status');
+    const verificationEvidenceInput = document.getElementById('verification-evidence');
+    const observationValidation = document.getElementById('observation-validation');
+    const saveButton = document.getElementById('save-btn');
+    const useCandidateButton = document.getElementById('use-candidate-btn');
 
-    function resetAnalysisSummary() {
-      document.getElementById('totalSpecies').textContent = '0';
-      document.getElementById('totalIndividuals').textContent = '0';
-      document.getElementById('shannonIndex').textContent = '0.00';
+    function currentAnalysis() {
+      return Biodiversity.buildAnalysis(surveyData.filter((record) => record && typeof record === 'object'));
+    }
+
+    function persistenceMessage() {
+      const repairDisclosure = persistenceState.repairPending
+        ? `Sebagian data lokal tidak valid (${persistenceState.droppedStoredEntryCount} entri). Saat perubahan berikutnya disimpan, entri yang tidak dapat dipulihkan akan dihapus dari penyimpanan lokal.`
+        : '';
+      if (persistenceState.saving) {
+        return persistenceState.repairPending
+          ? `Menyimpan bagian data yang valid. ${repairDisclosure}`
+          : 'Menyimpan data survei…';
+      }
+      if (persistenceState.errorCode === 'revision_conflict') {
+        return `Data lokal berubah di tab lain; muat ulang sebelum melanjutkan.${repairDisclosure ? ` ${repairDisclosure}` : ''}`;
+      }
+      if (persistenceState.errorCode === 'clear_not_supported') {
+        return 'Data tersimpan tidak dapat diidentifikasi dengan aman. Hapus data situs ini melalui pengaturan browser untuk memulihkan penyimpanan.';
+      }
+      if (persistenceState.errorCode === 'unsupported_schema_version') {
+        return 'Data tersimpan tidak dapat dipulihkan karena formatnya tidak didukung.';
+      }
+      if (persistenceState.errorCode === 'corrupt_snapshot') {
+        return repairDisclosure;
+      }
+      if (!persistenceState.storageAvailable) {
+        return 'Penyimpanan lokal tidak tersedia; data hanya bertahan selama halaman terbuka.';
+      }
+      if (persistenceState.errorCode) {
+        return `Perubahan belum tersimpan. Aplikasi tetap dapat digunakan selama halaman ini terbuka.${repairDisclosure ? ` ${repairDisclosure}` : ''}`;
+      }
+      if (persistenceState.statusCode === 'partial') {
+        return repairDisclosure;
+      }
+      if (persistenceState.statusCode === 'repaired') {
+        return `Bagian data yang valid telah disimpan; ${persistenceState.lastRepairCount} entri yang tidak dapat dipulihkan telah dihapus dari penyimpanan lokal.`;
+      }
+      if (persistenceState.statusCode === 'cleared') return 'Data survei lokal telah dihapus.';
+      if (persistenceState.statusCode === 'empty') return 'Belum ada data survei tersimpan di perangkat ini.';
+      if (persistenceState.statusCode === 'pending') return 'Perubahan belum tersimpan.';
+      if (persistenceState.statusCode === 'saved') return 'Data survei tersimpan di perangkat ini.';
+      return 'Memeriksa penyimpanan lokal…';
+    }
+
+    function renderPersistenceStatus() {
+      persistenceStatus.textContent = persistenceMessage();
+      persistenceStatus.classList.toggle(
+        'error',
+        !persistenceState.storageAvailable || !!persistenceState.errorCode
+      );
+    }
+
+    function showSurveyNotice(message = '') {
+      surveyNotice.textContent = message;
+      surveyNotice.classList.toggle('hidden', !message);
+    }
+
+    function isBlockingPersistenceError(errorCode) {
+      return [
+        'revision_conflict',
+        'unsupported_schema_version',
+        'invalid_snapshot',
+        'invalid_revision',
+        'invalid_saved_at',
+        'invalid_clear_marker',
+        'clear_not_supported',
+        'store_closed'
+      ].includes(errorCode);
+    }
+
+    function updatePersistenceControlState() {
+      const blocked = isBlockingPersistenceError(persistenceState.errorCode);
+      const recoverableByClear = blocked
+        && typeof persistenceState.clearToken === 'string'
+        && persistenceState.errorCode !== 'revision_conflict'
+        && persistenceState.errorCode !== 'store_closed';
+      setSurveyMutationControlsEnabled(!blocked, { clearEnabled: !blocked || recoverableByClear });
+    }
+
+    function persistenceFailure(result) {
+      persistenceState.saving = false;
+      persistenceState.errorCode = result.errorCode || 'transaction_failed';
+      if (persistenceState.errorCode === 'revision_conflict') {
+        persistenceWrites.cancelScheduled();
+      }
+      if (persistenceState.errorCode === 'clear_not_supported') {
+        persistenceState.clearToken = null;
+      }
+      if (persistenceState.errorCode === 'storage_unavailable'
+        || persistenceState.errorCode === 'database_open_failed') {
+        persistenceState.storageAvailable = false;
+      }
+      console.warn('Survey persistence failed:', persistenceState.errorCode, result.error || '');
+      renderPersistenceStatus();
+      updatePersistenceControlState();
+      return false;
+    }
+
+    function buildPersistableEntries() {
+      const previousEntries = persistenceState.snapshot
+        && Array.isArray(persistenceState.snapshot.observations)
+        ? persistenceState.snapshot.observations
+        : [];
+      return SurveyStore.mergePersistableEntries(surveyData, previousEntries);
+    }
+
+    async function performSurveySave() {
+      if (!persistenceState.restored || !persistenceState.storageAvailable) return false;
+      if (isBlockingPersistenceError(persistenceState.errorCode)) return false;
+      persistenceState.saving = true;
+      if (persistenceState.errorCode !== 'corrupt_snapshot') {
+        persistenceState.errorCode = null;
+      }
+      renderPersistenceStatus();
+
+      const repairCount = persistenceState.repairPending
+        ? persistenceState.droppedStoredEntryCount
+        : 0;
+      const result = await surveyStore.save(
+        { observations: buildPersistableEntries() },
+        { expectedRevision: persistenceState.revision }
+      );
+      if (!result.ok) return persistenceFailure(result);
+
+      persistenceState.saving = false;
+      persistenceState.revision = result.snapshot.revision;
+      persistenceState.lastSavedAt = result.snapshot.savedAt;
+      persistenceState.snapshot = result.snapshot;
+      persistenceState.repairPending = false;
+      persistenceState.droppedStoredEntryCount = 0;
+      persistenceState.lastRepairCount = repairCount;
+      persistenceState.statusCode = repairCount ? 'repaired' : 'saved';
+      persistenceState.errorCode = null;
+      renderPersistenceStatus();
+      return true;
+    }
+
+    function persistSurveyNow() {
+      if (isBlockingPersistenceError(persistenceState.errorCode)) {
+        renderPersistenceStatus();
+        updatePersistenceControlState();
+        return Promise.resolve(false);
+      }
+      return persistenceWrites.run(performSurveySave);
+    }
+
+    function scheduleSurveySave() {
+      if (!persistenceState.restored || !persistenceState.storageAvailable) return;
+      if (isBlockingPersistenceError(persistenceState.errorCode)) {
+        renderPersistenceStatus();
+        updatePersistenceControlState();
+        return;
+      }
+      persistenceState.statusCode = 'pending';
+      if (persistenceState.errorCode !== 'corrupt_snapshot') {
+        persistenceState.errorCode = null;
+      }
+      renderPersistenceStatus();
+      persistenceWrites.schedule(performSurveySave);
+    }
+
+    function cancelPendingSurveySave() {
+      persistenceWrites.cancelScheduled();
+    }
+
+    function formatShannon(value) {
+      return Number.isFinite(value) ? value.toFixed(2) : '0.00';
+    }
+
+    function renderAnalysisSummary(analysis) {
+      document.getElementById('totalSpecies').textContent = String(analysis.totalCategories);
+      document.getElementById('totalIndividuals').textContent = String(analysis.totalIndividuals);
+      document.getElementById('shannonIndex').textContent = formatShannon(analysis.shannonIndex);
+    }
+
+    function currentInterpretation(analysis) {
+      return DiversityInterpretation.describeAnalysis(analysis, surveyData);
+    }
+
+    function appendTextLine(container, text) {
+      const paragraph = document.createElement('p');
+      paragraph.textContent = text;
+      container.appendChild(paragraph);
+    }
+
+    function renderAnalysisInterpretation(analysis) {
+      const interpretation = currentInterpretation(analysis);
+      const panel = document.getElementById('analysisInterpretation');
+      panel.replaceChildren();
+      const heading = document.createElement('h3');
+      heading.textContent = 'Cara membaca hasil';
+      panel.appendChild(heading);
+      appendTextLine(panel, interpretation.summary);
+      appendTextLine(panel, interpretation.exclusionSummary);
+      appendTextLine(panel, interpretation.methodologicalNote);
+      appendTextLine(panel, interpretation.comparisonNote);
+      if (interpretation.sourceNote) appendTextLine(panel, interpretation.sourceNote);
     }
 
     function displayChartFallback(message) {
@@ -244,44 +586,168 @@
       chartCanvas.classList.remove('hidden');
     }
 
-    // downscale to save RAM
-    async function downscaleImage(dataUrl, maxDim = 800) {
+    function readFileAsDataURL(file) {
       return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          try {
-            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-            const w = Math.round(img.width * scale);
-            const h = Math.round(img.height * scale);
-            const c = document.createElement('canvas');
-            c.width = w; c.height = h;
-            c.getContext('2d').drawImage(img, 0, 0, w, h);
-            resolve(c.toDataURL('image/jpeg', 0.85));
-          } catch (e) { reject(e); }
-        };
-        img.onerror = reject;
-        img.src = dataUrl;
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error || new Error('file_read_failed'));
+        reader.onabort = () => reject(new Error('file_read_aborted'));
+        reader.readAsDataURL(file);
       });
     }
 
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('image_decode_failed'));
+        image.src = src;
+      });
+    }
+
+    // downscale to save RAM
+    async function downscaleImage(dataUrl, maxDim = 800) {
+      const image = await loadImage(dataUrl);
+      const scale = Math.min(1, maxDim / Math.max(image.width, image.height));
+      const width = Math.round(image.width * scale);
+      const height = Math.round(image.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('canvas_context_unavailable');
+      context.drawImage(image, 0, 0, width, height);
+      return canvas.toDataURL('image/jpeg', 0.85);
+    }
+
+    function resetSurveyGrid(records = []) {
+      surveyGrid.replaceChildren();
+      surveyData = [];
+      const occupiedSlots = records
+        .map((entry) => entry.slotIndex)
+        .filter((slotIndex) => Number.isInteger(slotIndex) && slotIndex >= 0);
+      const requiredSlots = Math.min(
+        SurveyStore.MAX_SLOT_COUNT,
+        Math.max(4, occupiedSlots.length ? Math.max(...occupiedSlots) + 1 : 0)
+      );
+      for (let index = 0; index < requiredSlots; index += 1) addOrganismCard();
+      records.forEach((entry) => {
+        surveyData[entry.slotIndex] = entry.record;
+        updateCardDisplay(entry.slotIndex);
+      });
+    }
+
+    async function restoreSurvey() {
+      try {
+        const result = await surveyStore.load();
+        if (!result.ok) {
+          persistenceState.statusCode = 'error';
+          persistenceState.errorCode = result.errorCode || 'corrupt_snapshot';
+          persistenceState.clearToken = result.clearToken || null;
+          persistenceState.repairPending = false;
+          persistenceState.droppedStoredEntryCount = 0;
+          if (persistenceState.errorCode === 'storage_unavailable'
+            || persistenceState.errorCode === 'database_open_failed') {
+            persistenceState.storageAvailable = false;
+          }
+          console.warn('Survey restore failed:', persistenceState.errorCode);
+          renderPersistenceStatus();
+          return;
+        }
+
+        if (!result.snapshot) {
+          persistenceState.revision = result.revision;
+          persistenceState.lastSavedAt = result.savedAt;
+          persistenceState.snapshot = null;
+          persistenceState.clearToken = null;
+          persistenceState.repairPending = false;
+          persistenceState.droppedStoredEntryCount = 0;
+          persistenceState.statusCode = 'empty';
+          renderPersistenceStatus();
+          return;
+        }
+
+        const restored = SurveyStore.restoreObservations(result.snapshot);
+        resetSurveyGrid(restored.entries);
+        persistenceState.revision = result.snapshot.revision;
+        persistenceState.lastSavedAt = result.snapshot.savedAt;
+        persistenceState.snapshot = result.snapshot;
+        persistenceState.clearToken = null;
+        persistenceState.repairPending = result.warnings.length > 0;
+        persistenceState.droppedStoredEntryCount = result.droppedEntryCount || result.warnings.length;
+        persistenceState.statusCode = result.warnings.length ? 'partial' : 'saved';
+        persistenceState.errorCode = result.warnings.length ? 'corrupt_snapshot' : null;
+        renderPersistenceStatus();
+      } finally {
+        persistenceState.restored = true;
+        updatePersistenceControlState();
+      }
+    }
+
+    async function clearLocalSurvey() {
+      if (!window.confirm('Hapus foto dan data survei lokal dari browser ini?')) return;
+      if (persistenceState.errorCode === 'clear_not_supported') {
+        renderPersistenceStatus();
+        updatePersistenceControlState();
+        return;
+      }
+      cancelPendingSurveySave();
+      const force = persistenceState.errorCode === 'unsupported_schema_version'
+        || persistenceState.errorCode === 'invalid_snapshot'
+        || persistenceState.errorCode === 'invalid_revision'
+        || persistenceState.errorCode === 'invalid_saved_at'
+        || persistenceState.errorCode === 'invalid_clear_marker';
+      const result = await persistenceWrites.run(() => surveyStore.clear({
+          expectedRevision: persistenceState.revision,
+          force,
+          clearToken: force ? persistenceState.clearToken : undefined
+        }));
+      if (!result.ok) {
+        persistenceFailure(result);
+        return;
+      }
+
+      persistenceState.revision = result.revision;
+      persistenceState.lastSavedAt = result.savedAt;
+      persistenceState.snapshot = null;
+      persistenceState.clearToken = null;
+      persistenceState.errorCode = null;
+      persistenceState.repairPending = false;
+      persistenceState.droppedStoredEntryCount = 0;
+      persistenceState.lastRepairCount = 0;
+      persistenceState.statusCode = 'cleared';
+      resetSurveyGrid();
+      const analysis = currentAnalysis();
+      renderAnalysisSummary(analysis);
+      renderChart(analysis);
+      renderAnalysisInterpretation(analysis);
+      renderCoachDataContext(analysis);
+      generateReportContent();
+      renderPersistenceStatus();
+      updatePersistenceControlState();
+    }
+
     // init
-    function initializeApp() {
+    async function initializeApp() {
       renderStatus();
+      renderPersistenceStatus();
       setupEventListeners();
       for (let i = 0; i < 4; i++) addOrganismCard();
+      setSurveyMutationControlsEnabled(false);
       document.getElementById('reportDate').textContent = new Date().toLocaleDateString('id-ID', {dateStyle: 'full'});
       loadModel(); // tries only if libs present
+      await restoreSurvey();
     }
 
     async function loadModel() {
       if (!has.mobilenet() || !has.tf()) return; // keep UI alive
       try {
-        headerStatus.textContent = 'Memuat Model AI…';
+        headerStatus.textContent = 'Memuat model…';
         model = await mobilenet.load();
         headerStatus.textContent = 'Pembelajaran Interaktif Keanekaragaman Hayati (Offline Pack)';
       } catch (e) {
         console.warn('Model load failed:', e);
-        headerStatus.textContent = 'AI tidak tersedia saat ini.';
+        headerStatus.textContent = 'Model tidak tersedia saat ini.';
       }
     }
 
@@ -291,6 +757,7 @@
       });
       document.getElementById('addBtn').addEventListener('click', addOrganismCard);
       document.getElementById('sampleBtn').addEventListener('click', loadSampleData);
+      document.getElementById('clearSurveyBtn').addEventListener('click', clearLocalSurvey);
       document.getElementById('preQuizBtn').addEventListener('click', runPreQuiz);
       document.getElementById('postQuizBtn').addEventListener('click', runPostQuiz);
       document.getElementById('downloadBtn').addEventListener('click', downloadReport);
@@ -300,9 +767,28 @@
       document.getElementById('helpEvidence').addEventListener('click', () => showHelp('evidence'));
       document.getElementById('helpReason').addEventListener('click', () => showHelp('reason'));
       document.getElementById('cancel-btn').addEventListener('click', closeModal);
-      document.getElementById('save-btn').addEventListener('click', saveOrganismData);
+      saveButton.addEventListener('click', saveOrganismData);
+      useCandidateButton.addEventListener('click', adoptModelCandidate);
+      [finalLabelInput, taxonomicLevelInput, verificationStatusInput, verificationEvidenceInput]
+        .forEach((control) => control.addEventListener('input', updateObservationDraft));
+      verificationStatusInput.addEventListener('change', updateObservationDraft);
       fileInput.addEventListener('change', handleFileSelect);
       userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && modal.classList.contains('visible')) closeModal();
+      });
+      window.addEventListener('pagehide', () => {
+        if (persistenceWrites.hasScheduled()) void persistSurveyNow();
+      });
+    }
+
+    function setSurveyMutationControlsEnabled(enabled, options = {}) {
+      ['addBtn', 'sampleBtn'].forEach((id) => {
+        document.getElementById(id).disabled = !enabled;
+      });
+      document.getElementById('clearSurveyBtn').disabled = !(options.clearEnabled ?? enabled);
+      surveyGrid.inert = !enabled;
+      surveyGrid.setAttribute('aria-busy', String(!enabled));
     }
 
     function switchTab(id) {
@@ -315,105 +801,416 @@
       if (id === 'report') generateReportContent();
     }
 
-    function addOrganismCard() {
-      const cardId = `card-${surveyData.length}`;
-      const card = document.createElement('div');
+    function configureEmptyCard(card, index) {
+      const icon = document.createElement('div');
+      icon.className = 'add-icon';
+      icon.textContent = '📷';
+      const text = document.createElement('div');
+      text.className = 'add-text';
+      text.textContent = 'Ketuk untuk foto';
       card.className = 'organism-card';
-      card.id = cardId;
-      card.innerHTML = '<div class="add-icon">📷</div><div class="add-text">Ketuk untuk foto</div>';
-      card.addEventListener('click', function() {
-        if (!this.classList.contains('filled')) {
-          currentCardIndex = parseInt(cardId.split('-')[1]);
-          fileInput.click();
-        }
-      });
+      card.id = `card-${index}`;
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      card.setAttribute('aria-label', `Tambah foto untuk observasi ${index + 1}`);
+      card.replaceChildren(icon, text);
+      const activate = () => {
+        if (!card.classList.contains('filled')) chooseImageForCard(index);
+      };
+      card.onclick = activate;
+      card.onkeydown = (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        activate();
+      };
+      return card;
+    }
+
+    function addOrganismCard() {
+      if (surveyData.length >= SurveyStore.MAX_SLOT_COUNT) {
+        showSurveyNotice(`Maksimal ${SurveyStore.MAX_SLOT_COUNT} slot observasi.`);
+        return;
+      }
+      showSurveyNotice();
+      const card = document.createElement('div');
+      configureEmptyCard(card, surveyData.length);
       surveyGrid.appendChild(card);
       surveyData.push(null);
     }
 
-    async function handleFileSelect(e) {
-      const file = e.target.files[0];
-      if (!file || currentCardIndex === -1 || isProcessingImage) return;
-      isProcessingImage = true;
-      try {
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          try {
-            const raw = ev.target.result;
-            const imgSrc = await downscaleImage(raw, 800);
-            openModal(imgSrc);
-            await classifyImage(imgSrc);
-          } catch (error) {
-            console.error('Error processing image:', error);
-            alert('Gagal memproses gambar. Silakan coba lagi.');
-            closeModal();
-          } finally {
-            isProcessingImage = false;
-          }
-        };
-        reader.onerror = () => { isProcessingImage = false; alert('Gagal membaca file.'); };
-        reader.readAsDataURL(file);
-      } catch (error) {
-        isProcessingImage = false;
-        console.error('File select error:', error);
-      }
-      fileInput.value = '';
+    function chooseImageForCard(cardIndex) {
+      if (!Number.isInteger(cardIndex) || cardIndex < 0) return;
+      modalReturnCardIndex = cardIndex;
+      modalReturnFocusTarget = document.getElementById(`card-${cardIndex}`);
+      fileInput.dataset.cardIndex = String(cardIndex);
+      fileInput.click();
     }
 
-    function openModal(imgSrc) {
-      document.getElementById('modal-image').src = imgSrc;
-      document.getElementById('modal-loader').classList.remove('hidden');
-      document.getElementById('modal-result').classList.add('hidden');
-      document.getElementById('species-label').value = '';
-      document.getElementById('save-btn').disabled = true;
-      modal.classList.add('visible');
+    function modalFocusableControls() {
+      const selector = [
+        'button:not([disabled])',
+        'input:not([disabled])',
+        'select:not([disabled])',
+        'textarea:not([disabled])',
+        'a[href]',
+        '[tabindex]:not([tabindex="-1"])'
+      ].join(',');
+      return Array.from(modal.querySelectorAll(selector)).filter((control) => {
+        if (control.hidden || control.closest('[hidden], [inert], .hidden')) return false;
+        const style = window.getComputedStyle(control);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+      });
     }
-    function closeModal() { modal.classList.remove('visible'); currentCardIndex = -1; isProcessingImage=false; }
 
-    async function classifyImage(imgSrc) {
-      if (!model) {
-        document.getElementById('modal-loader').classList.add('hidden');
-        document.getElementById('modal-result').classList.remove('hidden');
-        document.getElementById('prediction-text').textContent = 'AI belum siap (isi label manual).';
-        document.getElementById('species-label').focus();
-        document.getElementById('save-btn').disabled = false;
+    function containModalFocus(event) {
+      if (!modalFocusTrapActive || event.key !== 'Tab') return;
+      const controls = modalFocusableControls();
+      if (!controls.length) {
+        event.preventDefault();
         return;
       }
-      const img = new Image();
-      img.onload = async () => {
-        try {
-          const predictions = await model.classify(img);
-          document.getElementById('modal-loader').classList.add('hidden');
-          document.getElementById('modal-result').classList.remove('hidden');
-          if (predictions && predictions.length > 0) {
-            const top = predictions[0];
-            const className = String(top.className).split(',')[0].trim();
-            const probability = (top.probability * 100).toFixed(1);
-            document.getElementById('prediction-text').textContent = `${className} (${probability}%)`;
-            document.getElementById('species-label').value = mapToLocalLabel(className);
-            document.getElementById('save-btn').disabled = false;
-          } else {
-            document.getElementById('prediction-text').textContent = 'Tidak terdeteksi';
-            document.getElementById('species-label').focus();
-            document.getElementById('save-btn').disabled = false;
-          }
-        } catch (error) {
-          console.error('Classification error:', error);
-          document.getElementById('modal-loader').classList.add('hidden');
-          document.getElementById('modal-result').classList.remove('hidden');
-          document.getElementById('prediction-text').textContent = 'Gagal klasifikasi (isi manual)';
-          document.getElementById('species-label').focus();
-          document.getElementById('save-btn').disabled = false;
-        }
+      const activeIndex = controls.indexOf(document.activeElement);
+      const nextIndex = activeIndex < 0
+        ? (event.shiftKey ? controls.length - 1 : 0)
+        : (activeIndex + (event.shiftKey ? -1 : 1) + controls.length) % controls.length;
+      event.preventDefault();
+      controls[nextIndex].focus();
+    }
+
+    function makeModalBackgroundInert() {
+      modalBackgroundInertStates = new Map();
+      Array.from(document.body.children)
+        .filter((region) => region !== modal && region.tagName !== 'SCRIPT')
+        .forEach((region) => {
+          modalBackgroundInertStates.set(region, region.inert);
+          region.inert = true;
+        });
+    }
+
+    function restoreModalBackgroundInertState() {
+      modalBackgroundInertStates.forEach((wasInert, region) => {
+        region.inert = wasInert;
+      });
+      modalBackgroundInertStates.clear();
+    }
+
+    function showClassificationModal() {
+      if (modal.classList.contains('visible')) return;
+      makeModalBackgroundInert();
+      modal.inert = false;
+      modal.setAttribute('aria-hidden', 'false');
+      modal.classList.add('visible');
+      modal.addEventListener('keydown', containModalFocus);
+      modalFocusTrapActive = true;
+      finalLabelInput.focus();
+    }
+
+    function hideClassificationModal({ restoreFocus = false } = {}) {
+      modal.classList.remove('visible');
+      modal.inert = true;
+      modal.setAttribute('aria-hidden', 'true');
+      modalFocusTrapActive = false;
+      modal.removeEventListener('keydown', containModalFocus);
+      restoreModalBackgroundInertState();
+      if (!restoreFocus || !Number.isInteger(modalReturnCardIndex)) return;
+      const card = document.getElementById(`card-${modalReturnCardIndex}`);
+      const focusTarget = card?.classList.contains('filled')
+        ? card.querySelector('.count-badge input')
+        : (modalReturnFocusTarget?.isConnected ? modalReturnFocusTarget : card);
+      focusTarget?.focus();
+      modalReturnCardIndex = null;
+      modalReturnFocusTarget = null;
+    }
+
+    function resetFileInput() {
+      fileInput.value = '';
+      delete fileInput.dataset.cardIndex;
+    }
+
+    function resetClassificationModal() {
+      delete modal.dataset.requestId;
+      document.getElementById('modal-image').removeAttribute('src');
+      document.getElementById('modal-loader').classList.add('hidden');
+      document.getElementById('modal-result').classList.add('hidden');
+      document.getElementById('model-candidate-text').textContent = 'Tidak ada';
+      document.getElementById('model-score-text').textContent = 'Tidak ada';
+      document.getElementById('model-status').textContent = '';
+      finalLabelInput.value = '';
+      finalLabelInput.disabled = false;
+      taxonomicLevelInput.value = 'unknown';
+      taxonomicLevelInput.disabled = false;
+      verificationStatusInput.value = 'unverified';
+      verificationEvidenceInput.value = '';
+      observationValidation.textContent = '';
+      useCandidateButton.disabled = true;
+      saveButton.disabled = true;
+    }
+
+    function validationMessage(errors) {
+      if (errors.includes('unresolved_final_label_present')) return 'Observasi belum teridentifikasi tidak boleh memiliki label akhir.';
+      if (errors.includes('final_label_too_long')) return 'Label akhir maksimal 120 karakter.';
+      if (errors.includes('verification_evidence_too_long')) return 'Bukti verifikasi maksimal 1.000 karakter.';
+      if (errors.includes('missing_final_label')) return 'Isi label akhir, atau pilih Belum teridentifikasi.';
+      if (errors.includes('unknown_taxonomic_level')) return 'Pilih tingkat identifikasi.';
+      if (errors.includes('missing_verification_evidence')) return 'Tambahkan bukti untuk status Kemungkinan atau Terverifikasi.';
+      if (errors.some((reason) => reason.includes('count'))) return 'Jumlah harus bilangan bulat 1–999.';
+      if (errors.length) return 'Periksa kembali data observasi.';
+      return '';
+    }
+
+    function currentObservationValidation() {
+      if (!pendingClassification) return { valid: false, errors: ['missing_request'] };
+      return ObservationRecord.validateObservationDraft({
+        id: pendingClassification.cardIndex,
+        ...pendingClassification.observationDraft,
+        modelCandidate: pendingClassification.modelCandidate,
+        count: 1,
+        recordSource: 'user'
+      });
+    }
+
+    function renderObservationValidation() {
+      const activeRequest = classificationController.getActive();
+      if (!activeRequest || !requestOwnsPendingModal(activeRequest)) {
+        saveButton.disabled = true;
+        return;
+      }
+
+      const validation = currentObservationValidation();
+      saveButton.disabled = !pendingClassification.classificationSettled || !validation.valid;
+      observationValidation.textContent = pendingClassification.classificationSettled
+        ? validationMessage(validation.errors)
+        : 'Tunggu hasil model atau mode pengisian manual.';
+    }
+
+    function updateObservationDraft() {
+      const activeRequest = classificationController.getActive();
+      if (!activeRequest || !requestOwnsPendingModal(activeRequest)) return;
+
+      const status = verificationStatusInput.value;
+      if (status === 'unresolved') {
+        finalLabelInput.value = '';
+        finalLabelInput.disabled = true;
+        taxonomicLevelInput.value = 'unknown';
+        taxonomicLevelInput.disabled = true;
+        useCandidateButton.disabled = true;
+      } else {
+        finalLabelInput.disabled = false;
+        taxonomicLevelInput.disabled = false;
+        useCandidateButton.disabled = !pendingClassification.modelCandidate;
+      }
+      pendingClassification.observationDraft = {
+        finalLabel: finalLabelInput.value,
+        taxonomicLevel: taxonomicLevelInput.value,
+        verificationStatus: status,
+        verificationEvidence: verificationEvidenceInput.value
       };
-      img.onerror = () => {
-        document.getElementById('modal-loader').classList.add('hidden');
-        document.getElementById('modal-result').classList.remove('hidden');
-        document.getElementById('prediction-text').textContent = 'Gambar error (isi manual)';
-        document.getElementById('species-label').focus();
-        document.getElementById('save-btn').disabled = false;
+      renderObservationValidation();
+    }
+
+    function adoptModelCandidate() {
+      const activeRequest = classificationController.getActive();
+      if (!activeRequest || !requestOwnsPendingModal(activeRequest)) return;
+      const candidate = pendingClassification.modelCandidate;
+      if (!candidate || verificationStatusInput.value === 'unresolved') return;
+      finalLabelInput.value = candidate.suggestedLabel;
+      updateObservationDraft();
+      finalLabelInput.focus();
+    }
+
+    function requestOwnsPendingClassification(request) {
+      return classificationController.isActive(request.id)
+        && pendingClassification
+        && pendingClassification.requestId === request.id
+        && pendingClassification.cardIndex === request.cardIndex;
+    }
+
+    function requestOwnsPendingModal(request) {
+      return requestOwnsPendingClassification(request)
+        && modal.dataset.requestId === String(request.id);
+    }
+
+    function settleInference(request) {
+      if (inferenceRequestId === request.id) inferenceRequestId = null;
+    }
+
+    function invalidateCurrentClassification(request) {
+      if (!request || !classificationController.invalidate(request.id)) return false;
+      if (pendingClassification && pendingClassification.requestId === request.id) {
+        pendingClassification = null;
+      }
+      settleInference(request);
+      return true;
+    }
+
+    async function handleFileSelect(e) {
+      const input = e.currentTarget;
+      const file = input.files && input.files[0];
+      const cardIndex = Number(input.dataset.cardIndex);
+      resetFileInput();
+      if (!file) return;
+      if (!Number.isInteger(cardIndex) || cardIndex < 0 || !document.getElementById(`card-${cardIndex}`)) return;
+      if (file.type && !file.type.startsWith('image/')) {
+        alert('File gambar tidak dapat digunakan. Silakan pilih gambar lain.');
+        return;
+      }
+
+      const request = classificationController.begin({ cardIndex, fileName: file.name });
+      if (!request) return;
+
+      pendingClassification = {
+        requestId: request.id,
+        cardIndex: request.cardIndex,
+        imageSrc: null,
+        modelCandidate: null,
+        observationDraft: {
+          finalLabel: '',
+          taxonomicLevel: 'unknown',
+          verificationStatus: 'unverified',
+          verificationEvidence: ''
+        },
+        classificationSettled: false
       };
-      img.src = imgSrc;
+      inferenceRequestId = null;
+      resetClassificationModal();
+      hideClassificationModal();
+
+      try {
+        const raw = await readFileAsDataURL(file);
+        if (!classificationController.isActive(request.id)) return;
+
+        const imageSrc = await downscaleImage(raw, 800);
+        if (!classificationController.isActive(request.id)) return;
+
+        openModalForRequest(request, imageSrc);
+        if (!classificationController.isActive(request.id)) return;
+
+        await classifyImageForRequest(request, imageSrc);
+      } catch (error) {
+        if (!classificationController.isActive(request.id)) return;
+        console.error('Error processing image:', error);
+        alert('Gagal memproses gambar. Silakan coba lagi.');
+        invalidateCurrentClassification(request);
+        resetClassificationModal();
+        hideClassificationModal({ restoreFocus: true });
+        resetFileInput();
+      } finally {
+        settleInference(request);
+      }
+    }
+
+    function openModalForRequest(request, imageSrc) {
+      if (!requestOwnsPendingClassification(request)) return false;
+      pendingClassification.imageSrc = imageSrc;
+      modal.dataset.requestId = String(request.id);
+      document.getElementById('modal-image').src = imageSrc;
+      document.getElementById('modal-loader').classList.remove('hidden');
+      document.getElementById('modal-result').classList.add('hidden');
+      finalLabelInput.value = '';
+      saveButton.disabled = true;
+      showClassificationModal();
+      updateObservationDraft();
+      return true;
+    }
+
+    function renderManualClassificationFallback(request, message) {
+      if (!requestOwnsPendingModal(request)) return false;
+      pendingClassification.modelCandidate = null;
+      pendingClassification.classificationSettled = true;
+      document.getElementById('modal-loader').classList.add('hidden');
+      document.getElementById('modal-result').classList.remove('hidden');
+      document.getElementById('model-candidate-text').textContent = 'Tidak ada';
+      document.getElementById('model-score-text').textContent = 'Tidak ada';
+      document.getElementById('model-status').textContent = message;
+      useCandidateButton.disabled = true;
+      finalLabelInput.focus();
+      renderObservationValidation();
+      return true;
+    }
+
+    function renderClassificationResult(request, predictions) {
+      if (!requestOwnsPendingModal(request)) return false;
+
+      document.getElementById('modal-loader').classList.add('hidden');
+      document.getElementById('modal-result').classList.remove('hidden');
+      if (predictions && predictions.length > 0) {
+        const top = predictions[0];
+        const rawClassName = String(top.className).trim();
+        const primaryClassName = rawClassName.split(',')[0].trim();
+        const candidate = ObservationRecord.normalizeModelCandidate({
+          rawClassName,
+          suggestedLabel: mapToLocalLabel(primaryClassName),
+          score: Number(top.probability)
+        });
+        pendingClassification.modelCandidate = candidate;
+        document.getElementById('model-candidate-text').textContent = candidate
+          ? candidate.suggestedLabel
+          : 'Tidak ada';
+        document.getElementById('model-score-text').textContent = candidate && candidate.score !== null
+          ? `${(candidate.score * 100).toFixed(1)}%`
+          : 'Tidak ada';
+        document.getElementById('model-status').textContent = candidate
+          ? `Kelas model asli: ${candidate.rawClassName}`
+          : 'Hasil model tidak valid; isi data secara manual.';
+        useCandidateButton.disabled = !candidate || verificationStatusInput.value === 'unresolved';
+      } else {
+        pendingClassification.modelCandidate = null;
+        document.getElementById('model-candidate-text').textContent = 'Tidak ada';
+        document.getElementById('model-score-text').textContent = 'Tidak ada';
+        document.getElementById('model-status').textContent = 'Model tidak menghasilkan kandidat; isi data secara manual.';
+        useCandidateButton.disabled = true;
+        finalLabelInput.focus();
+      }
+      pendingClassification.classificationSettled = true;
+      renderObservationValidation();
+      return true;
+    }
+
+    async function classifyImageForRequest(request, imageSrc) {
+      if (!requestOwnsPendingModal(request)) return { status: 'stale' };
+      const requestModel = model;
+      if (!requestModel) {
+        renderManualClassificationFallback(request, 'Model belum siap; isi data secara manual.');
+        return { status: 'manual_fallback', reason: 'model_unavailable' };
+      }
+
+      inferenceRequestId = request.id;
+      let image;
+      try {
+        image = await loadImage(imageSrc);
+      } catch (error) {
+        if (!classificationController.isActive(request.id)) return { status: 'stale' };
+        console.error('Classification image decode error:', error);
+        renderManualClassificationFallback(request, 'Gambar error (isi manual)');
+        return { status: 'manual_fallback', reason: 'image_decode_failed' };
+      } finally {
+        if (!classificationController.isActive(request.id)) settleInference(request);
+      }
+      if (!classificationController.isActive(request.id)) return { status: 'stale' };
+
+      try {
+        const predictions = await requestModel.classify(image);
+        if (!classificationController.isActive(request.id)) return { status: 'stale' };
+        renderClassificationResult(request, predictions);
+        return { status: 'rendered' };
+      } catch (error) {
+        if (!classificationController.isActive(request.id)) return { status: 'stale' };
+        console.error('Classification error:', error);
+        renderManualClassificationFallback(request, 'Gagal klasifikasi (isi manual)');
+        return { status: 'manual_fallback', reason: 'classification_failed' };
+      } finally {
+        settleInference(request);
+      }
+    }
+
+    function closeModal() {
+      const activeRequest = classificationController.getActive();
+      if (activeRequest) invalidateCurrentClassification(activeRequest);
+      pendingClassification = null;
+      inferenceRequestId = null;
+      resetClassificationModal();
+      resetFileInput();
+      hideClassificationModal({ restoreFocus: true });
     }
 
     function mapToLocalLabel(s) {
@@ -422,16 +1219,38 @@
       return map[key] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Organisme');
     }
 
-    function saveOrganismData() {
-      const label = sanitizeLabel(document.getElementById('species-label').value).trim();
-      if (!label) { alert('Label tidak boleh kosong.'); document.getElementById('species-label').focus(); return; }
-      surveyData[currentCardIndex] = {
-        id: currentCardIndex,
-        imgSrc: document.getElementById('modal-image').src,
-        prediction: document.getElementById('prediction-text').textContent,
-        label, count: 1
-      };
-      updateCardDisplay(currentCardIndex); closeModal();
+    async function saveOrganismData() {
+      const activeRequest = classificationController.getActive();
+      if (!activeRequest || !pendingClassification) return;
+      if (pendingClassification.requestId !== activeRequest.id
+        || pendingClassification.cardIndex !== activeRequest.cardIndex
+        || modal.dataset.requestId !== String(activeRequest.id)
+        || !pendingClassification.imageSrc) return;
+
+      updateObservationDraft();
+      const cardIndex = activeRequest.cardIndex;
+      const result = ObservationRecord.createObservationRecord({
+        id: cardIndex,
+        imgSrc: pendingClassification.imageSrc,
+        modelCandidate: pendingClassification.modelCandidate,
+        ...pendingClassification.observationDraft,
+        count: 1,
+        recordSource: 'user'
+      });
+      if (!pendingClassification.classificationSettled || !result.record) {
+        observationValidation.textContent = validationMessage(result.errors || ['invalid_draft']);
+        saveButton.disabled = true;
+        return;
+      }
+      surveyData[cardIndex] = result.record;
+      updateCardDisplay(cardIndex);
+      await persistSurveyNow();
+      classificationController.complete(activeRequest.id);
+      pendingClassification = null;
+      inferenceRequestId = null;
+      resetClassificationModal();
+      resetFileInput();
+      hideClassificationModal({ restoreFocus: true });
     }
 
     function updateCardDisplay(index) {
@@ -439,165 +1258,420 @@
       const data = surveyData[index]; if (!data || !card) return;
       const newCard = card.cloneNode(false);
       newCard.className = 'organism-card filled'; newCard.style.cursor = 'default';
-      const img = document.createElement('img'); img.src = data.imgSrc; img.alt = data.label;
-      const overlay = document.createElement('div'); overlay.className = 'card-overlay'; overlay.textContent = `${data.label} (x${data.count || 1})`;
-      const del = document.createElement('button'); del.className='delete-btn'; del.dataset.id=String(index); del.textContent='×'; del.onclick = deleteOrganism;
+      newCard.removeAttribute('role');
+      newCard.removeAttribute('tabindex');
+      newCard.removeAttribute('aria-label');
+      const displayLabel = data.verificationStatus === 'unresolved'
+        ? ObservationRecord.UNRESOLVED_LABEL
+        : (data.finalLabel || ObservationRecord.UNRESOLVED_LABEL);
+      const statusLabel = ObservationRecord.formatVerificationStatus(data.verificationStatus);
+      const img = document.createElement('img'); img.src = data.imgSrc; img.alt = displayLabel;
+      const displayedCount = Number.isFinite(data.count) ? data.count : '?';
+      const overlay = document.createElement('div'); overlay.className = 'card-overlay';
+      function cardText(count) {
+        const countText = count === '' ? '?' : count;
+        return data.verificationStatus === 'unresolved'
+          ? `${ObservationRecord.UNRESOLVED_LABEL} (x${countText})`
+          : `${displayLabel} (x${countText}) — ${statusLabel}`;
+      }
+      overlay.textContent = cardText(displayedCount);
+      const del = document.createElement('button'); del.className='delete-btn'; del.dataset.id=String(index); del.textContent='×'; del.setAttribute('aria-label', `Hapus observasi ${displayLabel}`); del.onclick = deleteOrganism;
       const badge = document.createElement('div'); badge.className='count-badge';
       const x = document.createElement('span'); x.textContent='x';
-      const inp = document.createElement('input'); inp.type='number'; inp.min='1'; inp.max='999'; inp.value=data.count||1;
+      const inp = document.createElement('input'); inp.type='number'; inp.min='1'; inp.max='999'; inp.step='1'; inp.value=data.count ?? ''; inp.setAttribute('aria-label', `Jumlah individu untuk ${displayLabel}`);
+      const countError = document.createElement('span'); countError.className='count-error hidden'; countError.textContent='Jumlah harus bilangan bulat 1–999.';
       inp.onclick = e => e.stopPropagation();
-      inp.onchange = e => { const v = Math.max(1, Math.min(999, parseInt(e.target.value||'1',10))); inp.value=v; surveyData[index].count=v; overlay.textContent=`${data.label} (x${v})`; };
+      function renderCountValidity(rawCount) {
+        const invalid = !ObservationRecord.isValidCount(surveyData[index].count);
+        inp.classList.toggle('invalid-count', invalid);
+        inp.setAttribute('aria-invalid', String(invalid));
+        countError.classList.toggle('hidden', !invalid);
+        overlay.textContent = cardText(rawCount);
+      }
+      inp.oninput = e => {
+        const rawCount = e.target.value.trim();
+        surveyData[index].count = rawCount === '' ? null : Number(rawCount);
+        renderCountValidity(rawCount);
+        if (ObservationRecord.isValidCount(surveyData[index].count)) {
+          scheduleSurveySave();
+        } else {
+          cancelPendingSurveySave();
+          if (!isBlockingPersistenceError(persistenceState.errorCode)) {
+            persistenceState.statusCode = 'pending';
+            if (persistenceState.errorCode !== 'corrupt_snapshot') {
+              persistenceState.errorCode = null;
+            }
+          }
+          renderPersistenceStatus();
+          updatePersistenceControlState();
+        }
+      };
+      renderCountValidity(String(data.count ?? ''));
       badge.append(x, inp);
-      newCard.append(img, overlay, badge, del);
+      newCard.append(img, overlay, badge, countError, del);
       card.parentNode.replaceChild(newCard, card);
     }
 
-    function deleteOrganism(e) {
+    async function deleteOrganism(e) {
       e.stopPropagation();
       const idx = parseInt(e.target.dataset.id, 10);
       if (Number.isNaN(idx)) return;
       surveyData[idx] = null;
       const old = document.getElementById(`card-${idx}`);
       const fresh = document.createElement('div');
-      fresh.className='organism-card'; fresh.id=`card-${idx}`;
-      fresh.innerHTML='<div class="add-icon">📷</div><div class="add-text">Ketuk untuk foto</div>';
-      fresh.onclick = () => { currentCardIndex = idx; fileInput.click(); };
+      configureEmptyCard(fresh, idx);
       old.parentNode.replaceChild(fresh, old);
+      fresh.focus();
+      await persistSurveyNow();
     }
 
-    function loadSampleData() {
+    async function loadSampleData() {
       const svg = (text, bg) => {
         const s = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='${bg}'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='Arial' font-size='20'>${text}</text></svg>`;
         return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(s)}`;
       };
       const samples = [
-        {label:'Daun', imgSrc: svg('Daun','#4CAF50'), count:5},
-        {label:'Bunga Merah', imgSrc: svg('Bunga','#F44336'), count:3},
-        {label:'Kupu-kupu', imgSrc: svg('Kupu','#3F51B5'), count:2},
-        {label:'Semut', imgSrc: svg('Semut','#000000'), count:4}
+        {finalLabel:'Daun', imgSrc: svg('Daun','#4CAF50'), count:5},
+        {finalLabel:'Bunga Merah', imgSrc: svg('Bunga','#F44336'), count:3},
+        {finalLabel:'Kupu-kupu', imgSrc: svg('Kupu','#3F51B5'), count:2},
+        {finalLabel:'Semut', imgSrc: svg('Semut','#000000'), count:4}
       ];
-      surveyGrid.innerHTML=''; surveyData=[];
-      samples.forEach((s,i)=>{ const id=`card-${i}`; const card=document.createElement('div'); card.className='organism-card filled'; card.id=id; surveyGrid.appendChild(card); surveyData[i]={id:i,...s}; updateCardDisplay(i); });
-      alert('Data contoh dimuat. Buka tab Analisis → lihat H′ dan grafik.');
+      surveyGrid.replaceChildren(); surveyData=[];
+      samples.forEach((sample, index) => {
+        const result = ObservationRecord.createObservationRecord({
+          id: index,
+          ...sample,
+          modelCandidate: null,
+          taxonomicLevel: 'broad_category',
+          verificationStatus: 'unverified',
+          verificationEvidence: '',
+          recordSource: 'sample'
+        });
+        const card = document.createElement('div');
+        card.className = 'organism-card filled';
+        card.id = `card-${index}`;
+        surveyGrid.appendChild(card);
+        surveyData[index] = result.record;
+        updateCardDisplay(index);
+      });
+      await persistSurveyNow();
+      alert('Data contoh dimuat. Label contoh belum diverifikasi dan bukan hasil model.');
     }
 
-    function runAnalysis() {
-      const valid = surveyData.filter(Boolean);
-      speciesCounts = {};
-      if (!valid.length) {
-        resetAnalysisSummary();
-        displayChartFallback('Belum ada data organisme untuk dianalisis.');
-        alert("Kumpulkan data dulu di tab 'Kumpulkan'.");
+    function renderChart(analysis) {
+      if (window._chart) {
+        window._chart.destroy();
+        window._chart = null;
+      }
+      if (analysis.totalCategories === 0) {
+        displayChartFallback('Belum ada data organisme yang valid untuk dianalisis.');
         return;
       }
-      let totalIndividuals = 0;
-      for (const it of valid){ const n=Number(it.count||1); speciesCounts[it.label]=(speciesCounts[it.label]||0)+n; totalIndividuals+=n; }
-      const totalSpecies = Object.keys(speciesCounts).length;
-      let H = 0; if (totalIndividuals>0){ for (const s in speciesCounts){ const p=speciesCounts[s]/totalIndividuals; if(p>0) H -= p*Math.log(p); } }
-      document.getElementById('totalSpecies').textContent = totalSpecies;
-      document.getElementById('totalIndividuals').textContent = totalIndividuals;
-      document.getElementById('shannonIndex').textContent = H.toFixed(2);
-
       if (!has.chart()) {
         displayChartFallback(chartFallbackDefault);
         return;
       }
+
       hideChartFallback();
-      if (window._chart) window._chart.destroy();
       window._chart = new Chart(chartCanvas.getContext('2d'), {
         type:'bar',
-        data:{ labels:Object.keys(speciesCounts), datasets:[{ label:'Jumlah Individu', data:Object.values(speciesCounts), backgroundColor:'rgba(102,126,234,.8)', borderColor:'rgba(102,126,234,1)', borderWidth:1, borderRadius:4 }] },
+        data:{ labels:Object.keys(analysis.categoryCounts), datasets:[{ label:'Jumlah Individu', data:Object.values(analysis.categoryCounts), backgroundColor:'rgba(102,126,234,.8)', borderColor:'rgba(102,126,234,1)', borderWidth:1, borderRadius:4 }] },
         options:{ scales:{ y:{ beginAtZero:true, ticks:{ stepSize:1 } } }, plugins:{ legend:{ display:false } }, responsive:true }
       });
     }
 
-    function initChat(){
-      if (chatHistory.length) return;
-      const sh = parseFloat(document.getElementById('shannonIndex').textContent||'0');
-      const labels = Object.keys(speciesCounts);
-      const prompt = `Berdasarkan data Anda (H'=${(sh||0).toFixed(2)}, spesies: ${labels.join(', ')}), apa klaim Anda?`;
-      chatHistory.push({role:'coach', msg:prompt}); updateChat();
-      if (sh>1){ chatHistory.push({role:'coach', msg:"Bukti: pakai H' & grafik. Penalaran: faktor cahaya/teduh/polusi."}); updateChat(); }
+    function runAnalysis() {
+      const analysis = currentAnalysis();
+      renderAnalysisSummary(analysis);
+      renderChart(analysis);
+      renderAnalysisInterpretation(analysis);
     }
 
-    function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
-    function updateChat(){ chat.innerHTML = chatHistory.map(h=>`<p><strong>${h.role==='coach'?'Coach':'Anda'}:</strong> ${esc(h.msg)}</p>`).join(''); chat.scrollTop = chat.scrollHeight; }
+    function renderCoachDataContext(analysis) {
+      const interpretation = currentInterpretation(analysis);
+      const metrics = interpretation.state === 'no_valid_data'
+        ? ''
+        : ` Termasuk ${interpretation.totalCategories} kategori operasional, ${interpretation.totalIndividuals} individu, dan H′=${formatShannon(interpretation.shannonIndex)}.`;
+      coachDataContext.textContent = `Konteks data saat ini: ${interpretation.summary}${metrics} ${interpretation.exclusionSummary} ${interpretation.sourceNote}`.trim();
+    }
+
+    function initChat(){
+      renderCoachDataContext(currentAnalysis());
+      if (!chatHistory.length) {
+        chatHistory.push({role:'coach', msg:'Berdasarkan data survei saat ini, apa klaim yang dapat Anda buat?'});
+      }
+      updateChat();
+    }
+
+    function updateChat(){
+      chat.replaceChildren();
+      chatHistory.forEach((entry) => {
+        const row = document.createElement('p');
+        const speaker = document.createElement('strong');
+        speaker.textContent = entry.role === 'coach' ? 'Coach: ' : 'Anda: ';
+        row.append(speaker, document.createTextNode(entry.msg));
+        chat.appendChild(row);
+      });
+      chat.scrollTop = chat.scrollHeight;
+    }
 
     function sendMessage(){
       const msg = userInput.value.trim(); if(!msg) return;
       chatHistory.push({role:'user', msg}); userInput.value=''; updateChat();
-      const sh = parseFloat(document.getElementById('shannonIndex').textContent||'0'); const labels=Object.keys(speciesCounts);
-      let resp = msg.toLowerCase().includes('klaim')
-        ? `Contoh: "Lokasi ini beragam (H'=${sh.toFixed(2)}). Bukti: ${labels.length} spesies. Penalaran: teduh mendukung ${labels[0]||'spesies daun'}."`
-        : (msg.toLowerCase().includes('bukti')||msg.toLowerCase().includes('evidence'))
-        ? `Bukti kuat: H'=${sh.toFixed(2)} & grafik distribusi. Apa penalarannya?`
-        : `Hubungkan ke ekosistem lebih luas (mis. dampak polusi pada H').`;
+      const analysis = currentAnalysis();
+      const interpretation = currentInterpretation(analysis);
+      const labels = Object.keys(analysis.categoryCounts);
+      renderCoachDataContext(analysis);
+      let resp;
+      if (interpretation.state === 'no_valid_data') {
+        resp = `${interpretation.summary} Kumpulkan atau validasi observasi terlebih dahulu sebelum menyusun klaim.`;
+      } else if (msg.toLowerCase().includes('klaim')) {
+        resp = interpretation.state === 'single_category'
+          ? 'Contoh klaim berbasis data: pada sampel yang dicatat, seluruh individu valid berada pada satu kategori operasional.'
+          : 'Contoh klaim berbasis data: pada sampel yang dicatat, individu tersebar di antara beberapa kategori operasional.';
+      } else if (msg.toLowerCase().includes('bukti') || msg.toLowerCase().includes('evidence')) {
+        resp = `Bukti saat ini: ${interpretation.includedRecordCount} observasi disertakan, ${interpretation.totalCategories} kategori operasional, ${interpretation.totalIndividuals} individu, dan H′=${formatShannon(interpretation.shannonIndex)}. Kategori yang disertakan: ${labels.join(', ')}. ${interpretation.exclusionSummary}`;
+      } else {
+        resp = 'Penalaran: H′ merangkum jumlah kategori operasional dan pemerataan individu dalam sampel yang disertakan. Bukti tambahan dan metode sampling yang sebanding diperlukan sebelum membuat kesimpulan ekologis, kausal, atau perbandingan antar-survei.';
+      }
+      if (interpretation.sourceNote) resp += ` ${interpretation.sourceNote}`;
       chatHistory.push({role:'coach', msg:resp}); updateChat();
       const p=document.createElement('p'); p.textContent=`${msg} → ${resp}`; document.getElementById('reportCER').appendChild(p);
     }
 
     function showHelp(type){
       const msg = type==='claim'
-        ? "Klaim = pernyataan utama. Contoh: 'Area A lebih beragam dari Area B.'"
+        ? "Klaim = pernyataan utama yang dibatasi oleh sampel. Contoh: 'Pada sampel yang dicatat, individu tersebar di antara beberapa kategori operasional.'"
         : type==='evidence'
-        ? "Bukti = data spesifik. Contoh: H' = 1.8; 6 spesies; grafik merata."
-        : "Penalaran = menghubungkan bukti→klaim. Contoh: H' tinggi → sebaran individu merata.";
+        ? "Bukti = data spesifik dari sampel. Contoh: H′, jumlah kategori operasional, jumlah individu, serta observasi yang dikecualikan."
+        : "Penalaran = menghubungkan bukti→klaim sambil menyatakan batasnya. H′ merangkum kategori dan pemerataan dalam sampel; bukti tambahan diperlukan untuk kesimpulan ekologis atau kausal.";
       chatHistory.push({role:'coach', msg}); updateChat();
     }
 
-    function generateQuiz(){
-      const labels = Object.keys(speciesCounts);
-      chat.innerHTML += '<h4>Auto-Quiz (5 butir):</h4>';
-      const qs = [
-        { q:"Apa arti H' tinggi?", a:"Keanekaragaman lebih tinggi" },
-        { q:"H' dihitung dari proporsi spesies?", a:"Benar" },
-        { q:"Faktor lingkungan tidak memengaruhi ekosistem?", a:"Salah" },
-        { q:`Sebutkan 1 spesies dari data: ${labels[0]||'—'}?`, a:(labels[0]||'') || '—' },
-        { q:"CER: Claim tanpa evidence kuat?", a:"Tidak" },
-      ];
-      correctCount=0;
-      qs.forEach(({q,a})=>{
-        const item=document.createElement('div'); item.className='quiz-item';
-        item.innerHTML=`<p>${q}</p><input type="text" placeholder="Jawab..." />`;
-        const input=item.querySelector('input');
-        input.addEventListener('blur',()=>{ if (input.value.toLowerCase().includes(a.toLowerCase())){ input.style.background='#d4edda'; correctCount++; } else { input.style.background='#f8d7da'; input.value='Kunci: '+a; } postQuizScore=Math.min(100, correctCount*20); });
-        chat.appendChild(item);
-      });
-      chat.scrollTop = chat.scrollHeight;
+    function assessmentTitle(type) {
+      if (type === 'pre') return 'Pre-Asesmen';
+      if (type === 'post') return 'Post-Asesmen';
+      return 'Latihan dari Data';
     }
 
-    function runPreQuiz(){ preQuizScore=60; alert('Pre-quiz simulasi: 60%.'); localStorage.setItem('preScore', String(preQuizScore)); }
+    function updateAssessmentStatus(statusElement, state) {
+      if (state.error === 'incomplete_responses') {
+        statusElement.textContent = 'Belum dapat dinilai. Lengkapi semua jawaban, lalu pilih Nilai Jawaban.';
+        return;
+      }
+      if (state.error) {
+        statusElement.textContent = 'Asesmen tidak dapat dinilai karena data soal tidak valid.';
+        return;
+      }
+      statusElement.textContent = state.completed
+        ? `Skor: ${state.score}% (${state.correctAnswers}/${state.totalQuestions} benar)`
+        : `Terjawab ${state.answeredQuestions}/${state.totalQuestions}. Pilih Nilai Jawaban setelah semua jawaban terisi.`;
+    }
+
+    function renderAssessment(type) {
+      const panel = document.getElementById('assessmentPanel');
+      panel.replaceChildren();
+      const questions = assessmentQuestionSets[type] || [];
+
+      const heading = document.createElement('h3');
+      heading.textContent = assessmentTitle(type);
+      panel.appendChild(heading);
+
+      const state = assessmentStates[type];
+      const status = document.createElement('p');
+      status.className = 'quiz-status';
+      updateAssessmentStatus(status, state);
+      panel.appendChild(status);
+
+      if (state.error) return;
+
+      questions.forEach((question) => {
+        const item = document.createElement('div');
+        item.className = 'quiz-item';
+        const prompt = document.createElement('p');
+        prompt.textContent = question.prompt;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Jawab...';
+        input.value = state.responses[question.id] || '';
+
+        const handleResponse = () => {
+          const previousState = assessmentStates[type];
+          const nextState = Assessment.recordAssessmentResponse(
+            assessmentStates[type],
+            questions,
+            question.id,
+            input.value
+          );
+          assessmentStates[type] = nextState;
+          if (previousState.completed && !nextState.completed) {
+            panel.querySelectorAll('.quiz-item input').forEach((itemInput) => {
+              itemInput.style.background = '#fff';
+            });
+          }
+          updateAssessmentStatus(status, nextState);
+          renderAssessmentReport();
+        };
+
+        ['input', 'change', 'blur'].forEach((eventName) => {
+          input.addEventListener(eventName, handleResponse);
+        });
+        item.append(prompt, input);
+        panel.appendChild(item);
+      });
+
+      const submitButton = document.createElement('button');
+      submitButton.type = 'button';
+      submitButton.className = 'btn';
+      submitButton.textContent = 'Nilai Jawaban';
+      submitButton.addEventListener('click', () => {
+        assessmentStates[type] = Assessment.submitAssessment(assessmentStates[type], questions);
+        const submittedState = assessmentStates[type];
+        updateAssessmentStatus(status, submittedState);
+        if (submittedState.completed) {
+          panel.querySelectorAll('.quiz-item input').forEach((itemInput, index) => {
+            itemInput.style.background = Assessment.isResponseCorrect(questions[index], itemInput.value)
+              ? '#d4edda'
+              : '#f8d7da';
+          });
+        }
+        renderAssessmentReport();
+      });
+      panel.appendChild(submitButton);
+    }
+
+    function startAssessmentSession(type, questions) {
+      assessmentQuestionSets[type] = Assessment.snapshotQuestions(questions) || [];
+      assessmentStates[type] = Assessment.startAssessment(assessmentQuestionSets[type]);
+      switchTab('coach');
+      renderAssessment(type);
+      renderAssessmentReport();
+    }
+
+    function generateQuiz(){
+      const analysis = currentAnalysis();
+      const questions = [
+        ...measuredAssessmentQuestions.slice(0, 4),
+        {
+          id: 'survey-species-count',
+          prompt: 'Berapa jumlah kategori valid yang saat ini tercatat dalam analisis?',
+          acceptedAnswers: [String(analysis.totalCategories)]
+        }
+      ];
+      startAssessmentSession('practice', questions);
+    }
+
+    function runPreQuiz(){
+      startAssessmentSession('pre', measuredAssessmentQuestions);
+    }
+
     function runPostQuiz(){
-      const pre = Number(localStorage.getItem('preScore') || preQuizScore || 60);
-      if (!postQuizScore) postQuizScore = Math.min(100, Math.round(pre*1.18));
-      const gain = Math.max(0, postQuizScore - pre);
-      alert(`Post-quiz: ${postQuizScore}%. Gain: +${gain}%.`);
-      localStorage.setItem('postScore', String(postQuizScore));
-      document.getElementById('pilotGain').textContent = gain;
+      startAssessmentSession('post', measuredAssessmentQuestions);
+    }
+
+    function renderAssessmentReport() {
+      const summary = Assessment.summarizeAssessments(
+        assessmentStates.pre,
+        assessmentStates.post
+      );
+      document.getElementById('preAssessmentResult').textContent = Assessment.formatScore(summary.preScore);
+      document.getElementById('postAssessmentResult').textContent = Assessment.formatScore(summary.postScore);
+      document.getElementById('assessmentDifference').textContent =
+        Assessment.formatPercentagePointDifference(summary.difference);
+    }
+
+    function appendReportField(container, label, value, preserveLineBreaks = false) {
+      const row = document.createElement('p');
+      const labelElement = document.createElement('strong');
+      labelElement.textContent = `${label}: `;
+      const valueElement = document.createElement('span');
+      valueElement.textContent = value;
+      if (preserveLineBreaks) valueElement.style.whiteSpace = 'pre-wrap';
+      row.append(labelElement, valueElement);
+      container.appendChild(row);
+    }
+
+    function appendReportHeading(container, text) {
+      const heading = document.createElement('h4');
+      heading.textContent = text;
+      container.appendChild(heading);
+    }
+
+    function renderObservationDetails() {
+      const details = document.getElementById('reportObservationDetails');
+      details.replaceChildren();
+      const observations = surveyData.filter((record) => record && typeof record === 'object');
+      if (!observations.length) {
+        const empty = document.createElement('p');
+        empty.textContent = 'Belum ada observasi yang dicatat.';
+        details.appendChild(empty);
+        return;
+      }
+
+      observations.forEach((record, index) => {
+        const section = document.createElement('section');
+        section.className = 'observation-detail';
+        const heading = document.createElement('h4');
+        heading.textContent = `Observasi ${index + 1}`;
+        section.appendChild(heading);
+        const finalLabel = record.verificationStatus === 'unresolved'
+          ? ObservationRecord.UNRESOLVED_LABEL
+          : (record.finalLabel || ObservationRecord.UNRESOLVED_LABEL);
+        appendReportField(section, 'Label akhir', finalLabel);
+        appendReportField(section, 'Jumlah', String(record.count ?? 'Tidak valid'));
+        appendReportField(section, 'Tingkat identifikasi', ObservationRecord.formatTaxonomicLevel(record.taxonomicLevel));
+        appendReportField(section, 'Status verifikasi', ObservationRecord.formatVerificationStatus(record.verificationStatus));
+        appendReportField(section, 'Bukti verifikasi', record.verificationEvidence || 'Tidak dicatat', true);
+        appendReportField(
+          section,
+          'Kandidat model',
+          record.modelCandidate
+            ? `${record.modelCandidate.suggestedLabel} (kelas asli: ${record.modelCandidate.rawClassName})`
+            : 'Tidak ada'
+        );
+        appendReportField(
+          section,
+          'Skor model',
+          record.modelCandidate && record.modelCandidate.score !== null
+            ? `${(record.modelCandidate.score * 100).toFixed(1)}%`
+            : 'Tidak ada'
+        );
+        appendReportField(section, 'Sumber rekaman', ObservationRecord.formatRecordSource(record.recordSource));
+        details.appendChild(section);
+      });
     }
 
     function generateReportContent(){
-      const analysisEl=document.getElementById('reportAnalysis');
-      const sh = document.getElementById('shannonIndex').textContent;
-      let interp='rendah'; if (parseFloat(sh)>1.5) interp='tinggi'; else if (parseFloat(sh)>1.0) interp='sedang';
-      analysisEl.innerHTML = `
-        <p><strong>Total Spesies:</strong> ${document.getElementById('totalSpecies').textContent}</p>
-        <p><strong>Total Individu:</strong> ${document.getElementById('totalIndividuals').textContent}</p>
-        <p><strong>Indeks Shannon (H'):</strong> ${sh}</p>
-        <p><strong>Interpretasi:</strong> ${interp}</p>
-      `;
-      const pre = Number(localStorage.getItem('preScore') || preQuizScore || 60);
-      let post = Number(localStorage.getItem('postScore'));
-      if (!post) post = Math.min(100, Math.round(pre * 1.18));
-      const gain = Math.max(0, post - pre);
-      document.getElementById('pilotGain').textContent = gain;
+      const analysis = currentAnalysis();
+      const interpretation = currentInterpretation(analysis);
+      const analysisEl = document.getElementById('reportAnalysis');
+      analysisEl.replaceChildren();
+      appendReportField(analysisEl, 'Jumlah Kategori Operasional', String(analysis.totalCategories));
+      appendReportField(analysisEl, 'Total Individu', String(analysis.totalIndividuals));
+      appendReportField(analysisEl, "Indeks Shannon (H')", formatShannon(analysis.shannonIndex));
+      appendReportField(analysisEl, 'Observasi tercatat', String(interpretation.totalRecordedObservationCount));
+      appendReportField(analysisEl, 'Observasi disertakan', String(interpretation.includedRecordCount));
+      appendReportField(analysisEl, 'Observasi dikecualikan', String(interpretation.excludedRecordCount));
+      appendReportField(analysisEl, 'Observasi belum teridentifikasi', String(interpretation.unresolvedRecordCount));
+      appendReportField(analysisEl, 'Observasi tidak valid', String(interpretation.invalidRecordCount));
+      appendReportHeading(analysisEl, 'Ringkasan Deskriptif');
+      appendReportField(analysisEl, 'Ringkasan', interpretation.summary);
+      appendReportHeading(analysisEl, 'Batas Interpretasi');
+      appendReportField(analysisEl, 'Batas kategori operasional', interpretation.methodologicalNote);
+      appendReportField(analysisEl, 'Batas perbandingan survei', interpretation.comparisonNote);
+      if (interpretation.sourceNote) appendReportField(analysisEl, 'Catatan sumber data', interpretation.sourceNote);
+      appendReportHeading(analysisEl, 'Catatan Data yang Dikecualikan');
+      appendReportField(analysisEl, 'Catatan', interpretation.exclusionSummary);
+      renderObservationDetails();
+      renderAssessmentReport();
     }
 
     async function downloadReport(){
-      if (!has.h2c() || !has.jspdf()) { alert("PDF library belum tersedia. Jalankan ./get_libs.sh, lalu reload."); return; }
+      if (!has.h2c() || !has.jspdf()) { alert('Library PDF lokal belum tersedia. Pulihkan paket aplikasi lengkap, lalu muat ulang.'); return; }
       const jsPDF = getJsPDF();
       const btn = document.getElementById('downloadBtn'); btn.textContent='Membuat PDF…'; btn.disabled=true;
       try{
+        generateReportContent();
         const node = document.getElementById('report-content-wrapper');
         const canvas = await html2canvas(node,{ scale:2 });
         const imgData = canvas.toDataURL('image/png');
@@ -608,12 +1682,18 @@
       btn.textContent='📥 Unduh Laporan (PDF)'; btn.disabled=false;
     }
 
-    initializeApp();
+    initializeApp().catch((error) => {
+      console.error('Application initialization failed:', error);
+      persistenceState.restored = true;
+      persistenceState.errorCode = 'database_open_failed';
+      setSurveyMutationControlsEnabled(true);
+      renderPersistenceStatus();
+    });
   });
   </script>
 
   <footer style="text-align:center;padding:10px;font-size:.8em;color:#666;">
-    <p>AI on-device (TensorFlow.js). Offline-first. Jika fitur AI/Chart/PDF belum aktif, jalankan <code>./get_libs.sh</code> lalu reload.</p>
+    <p>Model berjalan di perangkat melalui TensorFlow.js setelah aset model tersedia. Aplikasi bersifat offline-first. Jika fitur model, chart, atau PDF belum aktif, pulihkan paket aplikasi lengkap lalu muat ulang.</p>
   </footer>
 </body>
 </html>
